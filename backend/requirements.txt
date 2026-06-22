@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+yt-dlp
+faster-whisper
+demucs
+pydub
+moviepy
+edge-tts
+vieneu
+python-multipart
+requests
