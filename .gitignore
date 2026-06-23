@@ -5,6 +5,7 @@ backend/build/
 backend/dist/
 backend/models/
 backend/output/
+backend/browser_sessions/
 backend/temp_projects/
 backend/__pycache__/
 backend/**/__pycache__/
@@ -17,6 +18,7 @@ frontend/src-tauri/binaries/
 frontend/src-tauri/.generated-*.conf.json
 frontend/src-tauri/target/
 frontend/vite-dev.*.log
+frontend/~/
 
 tmp/
 build/

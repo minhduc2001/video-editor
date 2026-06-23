@@ -189,7 +189,7 @@ export const Sidebar = ({
                     <div className="text-[11px] text-emerald-400">Video imported from link.</div>
                   )}
                   {linkImportStatus === 'error' && (
-                    <div className="text-[11px] text-red-400 leading-relaxed">{linkImportError ?? 'Download failed'}</div>
+                    <div className="whitespace-pre-line text-[11px] text-red-400 leading-relaxed">{linkImportError ?? 'Download failed'}</div>
                   )}
                 </form>
                 <div className="flex space-x-2">

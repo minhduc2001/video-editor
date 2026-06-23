@@ -14,14 +14,20 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import {
   downloadVideoFromLink,
   exportTimelineVideo,
+  getBrowserProfiles,
+  getCookieDiagnostics,
+  getDownloaderSettings,
   generateDubbingFromText,
   getSttSettings,
   getTelegramSettings,
   getTranslationModels,
   getTranslationSettings,
   isolateVoiceBackendVideo,
+  openCookieBrowser,
+  openDouyinSession,
   saveSttSettings,
   saveTelegramSettings,
+  saveDownloaderSettings,
   saveTranslationSettings,
   sendTelegramNotification,
   transcribeBackendVideo,
@@ -31,6 +37,9 @@ import {
   type TranslationModelOption,
   type SttSettings,
   type TelegramSettings,
+  type DownloaderSettings,
+  type BrowserProfileOption,
+  type CookieDiagnostics,
   type DubbingSegmentPayload,
 } from './lib/backend-api';
 import { parseSrtFileText, type ParsedSrtCue } from './lib/srt';
@@ -83,7 +92,7 @@ type ExportStatus = 'idle' | 'preparing' | 'rendering' | 'done' | 'error';
 type LinkImportStatus = 'idle' | 'downloading' | 'ready' | 'error';
 type AllInOneStatus = 'idle' | 'running' | 'done' | 'error';
 type SettingsStatus = 'idle' | 'loading' | 'saving' | 'saved' | 'error';
-type SettingsTab = 'translation' | 'tts' | 'stt' | 'telegram';
+type SettingsTab = 'translation' | 'tts' | 'stt' | 'downloader' | 'telegram';
 type TranslationModelsStatus = 'idle' | 'loading' | 'ready' | 'error';
 type DubbingStatus = 'idle' | 'generating' | 'ready' | 'error';
 const MIN_VIDEO_CLIP_DURATION = 0.1;
@@ -165,6 +174,19 @@ const defaultSttSettings: SttSettings = {
   language_mode_options: ['auto_zh_fallback', 'zh', 'auto'],
 };
 
+const defaultDownloaderSettings: DownloaderSettings = {
+  cookie_mode: 'none',
+  cookies_from_browser: 'chrome',
+  browser_profile: '',
+  cookies_file: '',
+  cookie_header: '',
+  session_browser: 'edge',
+  session_profile_path: '',
+  cookie_mode_options: ['none', 'session', 'browser', 'file', 'header'],
+  browser_options: ['edge', 'chrome', 'firefox', 'brave', 'chromium', 'opera', 'vivaldi'],
+  session_browser_options: ['edge', 'chrome'],
+};
+
 const translationProviderLabels: Record<TranslationProvider, string> = {
   openai: 'OpenAI',
   gemini: 'Gemini',
@@ -185,6 +207,7 @@ const settingsTabs: Array<{ id: SettingsTab; label: string }> = [
   { id: 'translation', label: 'Translation' },
   { id: 'tts', label: 'TTS' },
   { id: 'stt', label: 'STT' },
+  { id: 'downloader', label: 'Downloader' },
   { id: 'telegram', label: 'Telegram' },
 ];
 
@@ -441,6 +464,52 @@ const downloadTextFile = (fileName: string, text: string, type = 'text/plain') =
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+const isDouyinCookieError = (message: string) => {
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes('fresh cookies') ||
+    normalizedMessage.includes('could not copy chrome cookie database') ||
+    normalizedMessage.includes('chrome is locking its cookie database') ||
+    (normalizedMessage.includes('douyin') && normalizedMessage.includes('cookies')) ||
+    (normalizedMessage.includes('cookies') && normalizedMessage.includes('needed'))
+  );
+};
+
+const formatCookieDiagnostics = (diagnostics: CookieDiagnostics) => {
+  const parts = [
+    `mode=${diagnostics.cookie_mode}`,
+    `source=${diagnostics.source}`,
+    `status=${diagnostics.status}`,
+  ];
+
+  if (diagnostics.browser) {
+    parts.push(`browser=${diagnostics.browser}`);
+  }
+
+  if (diagnostics.profile) {
+    parts.push(`profile=${diagnostics.profile}`);
+  }
+
+  if (typeof diagnostics.browser_running === 'boolean') {
+    parts.push(`browser_running=${diagnostics.browser_running ? 'yes' : 'no'}`);
+  }
+
+  if (typeof diagnostics.has_s_v_web_id === 'boolean') {
+    parts.push(`s_v_web_id=${diagnostics.has_s_v_web_id ? 'yes' : 'no'}`);
+  }
+
+  if (diagnostics.useful_cookie_names?.length) {
+    parts.push(`found=${diagnostics.useful_cookie_names.join(', ')}`);
+  }
+
+  if (diagnostics.message) {
+    parts.push(`message=${diagnostics.message}`);
+  }
+
+  return parts.join('; ');
+};
+
 function App() {
   const [project, setProject] = useState<ProjectMetadata>(() =>
     createProjectMetadata('Untitled Project')
@@ -464,6 +533,22 @@ function App() {
   const [translationModelsError, setTranslationModelsError] = useState<string | null>(null);
   const [sttSettings, setSttSettings] = useState<SttSettings>(defaultSttSettings);
   const [sttSettingsDraft, setSttSettingsDraft] = useState<SttSettings>(defaultSttSettings);
+  const [downloaderSettings, setDownloaderSettings] =
+    useState<DownloaderSettings>(defaultDownloaderSettings);
+  const [downloaderSettingsDraft, setDownloaderSettingsDraft] =
+    useState<DownloaderSettings>(defaultDownloaderSettings);
+  const [browserProfileOptions, setBrowserProfileOptions] = useState<BrowserProfileOption[]>([]);
+  const [browserProfilesStatus, setBrowserProfilesStatus] =
+    useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [browserProfilesError, setBrowserProfilesError] = useState<string | null>(null);
+  const [cookieDiagnostics, setCookieDiagnostics] = useState<CookieDiagnostics | null>(null);
+  const [cookieDiagnosticsStatus, setCookieDiagnosticsStatus] =
+    useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [cookieDiagnosticsError, setCookieDiagnosticsError] = useState<string | null>(null);
+  const [downloaderBrowserMessage, setDownloaderBrowserMessage] = useState('');
+  const [downloaderSessionMessage, setDownloaderSessionMessage] = useState('');
+  const [isOpeningCookieBrowser, setIsOpeningCookieBrowser] = useState(false);
+  const [isOpeningDouyinSession, setIsOpeningDouyinSession] = useState(false);
   const [telegramSettings, setTelegramSettings] = useState<TelegramSettings>(defaultTelegramSettings);
   const [telegramSettingsDraft, setTelegramSettingsDraft] =
     useState<TelegramSettings>(defaultTelegramSettings);
@@ -873,6 +958,7 @@ function App() {
       const loadedSettings = await getTranslationSettings();
       const loadedTelegramSettings = await getTelegramSettings();
       const loadedSttSettings = await getSttSettings();
+      const loadedDownloaderSettings = await getDownloaderSettings();
       const normalizedSettings = {
         ...defaultTranslationSettings,
         ...loadedSettings,
@@ -886,6 +972,10 @@ function App() {
         ...defaultSttSettings,
         ...loadedSttSettings,
       };
+      const normalizedDownloaderSettings = {
+        ...defaultDownloaderSettings,
+        ...loadedDownloaderSettings,
+      };
 
       setTranslationSettings(normalizedSettings);
       setTranslationSettingsDraft(normalizedSettings);
@@ -893,6 +983,8 @@ function App() {
       setTelegramSettingsDraft(normalizedTelegramSettings);
       setSttSettings(normalizedSttSettings);
       setSttSettingsDraft(normalizedSttSettings);
+      setDownloaderSettings(normalizedDownloaderSettings);
+      setDownloaderSettingsDraft(normalizedDownloaderSettings);
       setSettingsStatus('idle');
     } catch (error) {
       setSettingsStatus('error');
@@ -904,12 +996,128 @@ function App() {
     setTranslationSettingsDraft(translationSettings);
     setTelegramSettingsDraft(telegramSettings);
     setSttSettingsDraft(sttSettings);
+    setDownloaderSettingsDraft(downloaderSettings);
     setSettingsTab('translation');
     setTranslationModelsError(null);
     setTranslationModelsStatus('idle');
+    setBrowserProfileOptions([]);
+    setBrowserProfilesStatus('idle');
+    setBrowserProfilesError(null);
+    setCookieDiagnostics(null);
+    setCookieDiagnosticsStatus('idle');
+    setCookieDiagnosticsError(null);
+    setDownloaderBrowserMessage('');
+    setDownloaderSessionMessage('');
     setSettingsError(null);
     setSettingsStatus('idle');
     setIsSettingsOpen(true);
+  };
+
+  const persistDownloaderSettings = async (nextDownloaderSettings: DownloaderSettings) => {
+    const savedDownloaderSettings = await saveDownloaderSettings(nextDownloaderSettings);
+    const normalizedDownloaderSettings = {
+      ...defaultDownloaderSettings,
+      ...savedDownloaderSettings,
+    };
+
+    setDownloaderSettings(normalizedDownloaderSettings);
+    setDownloaderSettingsDraft(normalizedDownloaderSettings);
+
+    return normalizedDownloaderSettings;
+  };
+
+  const handleOpenDouyinSession = async () => {
+    const browser = downloaderSettingsDraft.session_browser || 'edge';
+
+    setIsOpeningDouyinSession(true);
+    setDownloaderSessionMessage('');
+    setSettingsError(null);
+
+    try {
+      const result = await openDouyinSession(browser);
+      const nextDownloaderSettings: DownloaderSettings = {
+        ...downloaderSettingsDraft,
+        cookie_mode: 'session',
+        session_browser: result.browser,
+        session_profile_path: result.profile_path,
+      };
+      await persistDownloaderSettings(nextDownloaderSettings);
+      setDownloaderSessionMessage(
+        `${result.message} Downloader mode was saved. Profile: ${result.profile_path}`
+      );
+      setProjectStatus('Douyin session opened');
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Could not open Douyin session.');
+    } finally {
+      setIsOpeningDouyinSession(false);
+    }
+  };
+
+  const handleOpenCookieBrowser = async (url = '') => {
+    const browser = downloaderSettingsDraft.cookies_from_browser || 'chrome';
+
+    setIsOpeningCookieBrowser(true);
+    setDownloaderBrowserMessage('');
+    setSettingsError(null);
+
+    try {
+      const result = await openCookieBrowser(browser, url);
+      const nextDownloaderSettings: DownloaderSettings = {
+        ...downloaderSettingsDraft,
+        cookie_mode: 'browser',
+        cookies_from_browser: result.browser,
+      };
+      await persistDownloaderSettings(nextDownloaderSettings);
+      setDownloaderBrowserMessage(`${result.message} Downloader mode was saved.`);
+      setProjectStatus('Browser cookies selected');
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Could not open browser.');
+    } finally {
+      setIsOpeningCookieBrowser(false);
+    }
+  };
+
+  const handleLoadBrowserProfiles = async () => {
+    const browser = downloaderSettingsDraft.cookies_from_browser || 'chrome';
+
+    setBrowserProfilesStatus('loading');
+    setBrowserProfilesError(null);
+
+    try {
+      const result = await getBrowserProfiles(browser);
+      setBrowserProfileOptions(result.profiles);
+      setBrowserProfilesStatus('ready');
+
+      if (!downloaderSettingsDraft.browser_profile) {
+        const lastUsedProfile = result.profiles.find((profile) => profile.is_last_used);
+        if (lastUsedProfile) {
+          setDownloaderSettingsDraft((currentSettings) => ({
+            ...currentSettings,
+            browser_profile: lastUsedProfile.id,
+          }));
+        }
+      }
+    } catch (error) {
+      setBrowserProfileOptions([]);
+      setBrowserProfilesStatus('error');
+      setBrowserProfilesError(error instanceof Error ? error.message : 'Could not load browser profiles.');
+    }
+  };
+
+  const handleCheckCookieDiagnostics = async () => {
+    setCookieDiagnosticsStatus('loading');
+    setCookieDiagnosticsError(null);
+    setCookieDiagnostics(null);
+
+    try {
+      await persistDownloaderSettings(downloaderSettingsDraft);
+      const diagnostics = await getCookieDiagnostics();
+      setCookieDiagnostics(diagnostics);
+      setCookieDiagnosticsStatus('ready');
+    } catch (error) {
+      setCookieDiagnosticsStatus('error');
+      setCookieDiagnosticsError(error instanceof Error ? error.message : 'Could not check downloader cookies.');
+    }
   };
 
   const handleTranslationProviderChange = (provider: TranslationProvider) => {
@@ -993,6 +1201,11 @@ function App() {
         ...defaultSttSettings,
         ...savedSttSettings,
       };
+      const savedDownloaderSettings = await saveDownloaderSettings(downloaderSettingsDraft);
+      const normalizedDownloaderSettings = {
+        ...defaultDownloaderSettings,
+        ...savedDownloaderSettings,
+      };
 
       setTranslationSettings(normalizedSettings);
       setTranslationSettingsDraft(normalizedSettings);
@@ -1000,6 +1213,8 @@ function App() {
       setTelegramSettingsDraft(normalizedTelegramSettings);
       setSttSettings(normalizedSttSettings);
       setSttSettingsDraft(normalizedSttSettings);
+      setDownloaderSettings(normalizedDownloaderSettings);
+      setDownloaderSettingsDraft(normalizedDownloaderSettings);
       setSettingsStatus('saved');
       setProjectStatus('Settings saved');
     } catch (error) {
@@ -1165,8 +1380,36 @@ function App() {
       setLinkImportStatus('ready');
       setProjectStatus('Imported link video');
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Download video failed.';
       setLinkImportStatus('error');
-      setLinkImportError(error instanceof Error ? error.message : 'Download video failed.');
+
+      if (isDouyinCookieError(message)) {
+        try {
+          const browser = downloaderSettings.cookies_from_browser || 'chrome';
+          const result = await openCookieBrowser(browser, trimmedUrl);
+          const nextDownloaderSettings: DownloaderSettings = {
+            ...downloaderSettings,
+            cookie_mode: 'browser',
+            cookies_from_browser: result.browser,
+          };
+
+          await persistDownloaderSettings(nextDownloaderSettings);
+          setLinkImportError(
+            `${message}\n\nI opened your normal ${result.browser} profile for this exact link. Let Douyin fully load there so it creates the guest cookie, close all ${result.browser} windows/background processes, then press Download again. If it still fails and you use multiple Chrome profiles, open Settings > Downloader > Browser cookies, click Load profiles, and choose the profile where you opened Douyin.`
+          );
+          setProjectStatus('Browser cookies selected for this link');
+          return;
+        } catch (browserError) {
+          const browserMessage = browserError instanceof Error
+            ? browserError.message
+            : 'Could not open browser automatically.';
+
+          setLinkImportError(`${message}\n\nCould not open your normal browser automatically: ${browserMessage}`);
+          return;
+        }
+      }
+
+      setLinkImportError(message);
     }
   };
 
@@ -3581,6 +3824,257 @@ function App() {
                     </label>
                   </>
                 )}
+              </>
+            )}
+
+            {settingsTab === 'downloader' && (
+              <>
+                <label className="block text-[11px] font-medium uppercase text-gray-500">
+                  Cookie Source
+                  <select
+                    value={downloaderSettingsDraft.cookie_mode}
+                    onChange={(event) => {
+                      const cookieMode = event.target.value as DownloaderSettings['cookie_mode'];
+                      setDownloaderSettingsDraft((currentSettings) => ({
+                        ...currentSettings,
+                        cookie_mode: cookieMode,
+                        cookies_from_browser:
+                          cookieMode === 'browser' && !currentSettings.cookies_from_browser
+                            ? 'chrome'
+                            : currentSettings.cookies_from_browser,
+                        session_browser:
+                          cookieMode === 'session' && !currentSettings.session_browser
+                            ? 'edge'
+                            : currentSettings.session_browser,
+                      }));
+                    }}
+                    className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
+                  >
+                    <option value="none">None</option>
+                    <option value="session">Douyin session</option>
+                    <option value="browser">Browser cookies</option>
+                    <option value="file">cookies.txt file</option>
+                    <option value="header">Cookie header</option>
+                  </select>
+                </label>
+
+                {downloaderSettingsDraft.cookie_mode === 'session' && (
+                  <>
+                    <label className="block text-[11px] font-medium uppercase text-gray-500">
+                      Session Browser
+                      <select
+                        value={downloaderSettingsDraft.session_browser}
+                        onChange={(event) =>
+                          setDownloaderSettingsDraft((currentSettings) => ({
+                            ...currentSettings,
+                            session_browser: event.target.value,
+                          }))
+                        }
+                        className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
+                      >
+                        {(downloaderSettingsDraft.session_browser_options ?? defaultDownloaderSettings.session_browser_options ?? []).map((browser) => (
+                          <option key={browser} value={browser}>
+                            {browser}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={isOpeningDouyinSession}
+                      onClick={() => void handleOpenDouyinSession()}
+                      className="rounded bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isOpeningDouyinSession ? 'Opening session' : 'Open Douyin session'}
+                    </button>
+
+                    {downloaderSettingsDraft.session_profile_path && (
+                      <div className="rounded border border-[#343434] bg-[#151515] px-3 py-2 font-mono text-[10px] leading-relaxed text-gray-400">
+                        {downloaderSettingsDraft.session_profile_path}
+                      </div>
+                    )}
+
+                    {downloaderSessionMessage && (
+                      <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-300">
+                        {downloaderSessionMessage}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {downloaderSettingsDraft.cookie_mode === 'browser' && (
+                  <>
+                    <label className="block text-[11px] font-medium uppercase text-gray-500">
+                      Browser
+                      <select
+                        value={downloaderSettingsDraft.cookies_from_browser}
+                        onChange={(event) => {
+                          setBrowserProfileOptions([]);
+                          setBrowserProfilesStatus('idle');
+                          setBrowserProfilesError(null);
+                          setDownloaderSettingsDraft((currentSettings) => ({
+                            ...currentSettings,
+                            cookies_from_browser: event.target.value,
+                            browser_profile: '',
+                          }));
+                        }}
+                        className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
+                      >
+                        {(downloaderSettingsDraft.browser_options ?? defaultDownloaderSettings.browser_options ?? []).map((browser) => (
+                          <option key={browser} value={browser}>
+                            {browser}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="space-y-2">
+                      <div className="flex items-end gap-2">
+                        <label className="block flex-1 text-[11px] font-medium uppercase text-gray-500">
+                          Browser Profile
+                          {browserProfileOptions.length > 0 ? (
+                            <select
+                              value={downloaderSettingsDraft.browser_profile}
+                              onChange={(event) =>
+                                setDownloaderSettingsDraft((currentSettings) => ({
+                                  ...currentSettings,
+                                  browser_profile: event.target.value,
+                                }))
+                              }
+                              className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
+                            >
+                              <option value="">Auto/default</option>
+                              {browserProfileOptions.map((profile) => (
+                                <option key={profile.id} value={profile.id}>
+                                  {profile.name} ({profile.id}){profile.is_last_used ? ' - last used' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={downloaderSettingsDraft.browser_profile}
+                              onChange={(event) =>
+                                setDownloaderSettingsDraft((currentSettings) => ({
+                                  ...currentSettings,
+                                  browser_profile: event.target.value,
+                                }))
+                              }
+                              placeholder="Optional, e.g. Default or Profile 1"
+                              className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
+                            />
+                          )}
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={browserProfilesStatus === 'loading'}
+                          onClick={() => void handleLoadBrowserProfiles()}
+                          className="shrink-0 rounded border border-[#3d3d3d] bg-[#252525] px-3 py-2 text-xs text-gray-200 hover:bg-[#303030] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {browserProfilesStatus === 'loading' ? 'Loading' : 'Load profiles'}
+                        </button>
+                      </div>
+
+                      {browserProfilesStatus === 'ready' && (
+                        <div className="text-[10px] leading-relaxed text-gray-500">
+                          Found {browserProfileOptions.length} profile{browserProfileOptions.length === 1 ? '' : 's'}. Choose the one where you opened Douyin.
+                        </div>
+                      )}
+
+                      {browserProfilesStatus === 'error' && (
+                        <div className="text-[10px] leading-relaxed text-red-400">
+                          {browserProfilesError ?? 'Could not load browser profiles.'}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isOpeningCookieBrowser}
+                      onClick={() => void handleOpenCookieBrowser()}
+                      className="rounded bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isOpeningCookieBrowser ? 'Opening browser' : 'Open current browser'}
+                    </button>
+
+                    {downloaderBrowserMessage && (
+                      <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-300">
+                        {downloaderBrowserMessage}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  disabled={cookieDiagnosticsStatus === 'loading'}
+                  onClick={() => void handleCheckCookieDiagnostics()}
+                  className="rounded border border-[#3d3d3d] bg-[#252525] px-3 py-2 text-xs text-gray-200 hover:bg-[#303030] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {cookieDiagnosticsStatus === 'loading' ? 'Checking cookies' : 'Check Douyin cookies'}
+                </button>
+
+                {cookieDiagnosticsStatus === 'ready' && cookieDiagnostics && (
+                  <div
+                    className={`rounded border px-3 py-2 text-[11px] leading-relaxed ${
+                      cookieDiagnostics.has_s_v_web_id
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                        : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-200'
+                    }`}
+                  >
+                    {formatCookieDiagnostics(cookieDiagnostics)}
+                  </div>
+                )}
+
+                {cookieDiagnosticsStatus === 'error' && (
+                  <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-300">
+                    {cookieDiagnosticsError ?? 'Could not check downloader cookies.'}
+                  </div>
+                )}
+
+                {downloaderSettingsDraft.cookie_mode === 'file' && (
+                  <label className="block text-[11px] font-medium uppercase text-gray-500">
+                    cookies.txt Path
+                    <input
+                      value={downloaderSettingsDraft.cookies_file}
+                      onChange={(event) =>
+                        setDownloaderSettingsDraft((currentSettings) => ({
+                          ...currentSettings,
+                          cookies_file: event.target.value,
+                        }))
+                      }
+                      placeholder="C:\\Users\\Admin\\Downloads\\cookies.txt"
+                      className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
+                    />
+                  </label>
+                )}
+
+                {downloaderSettingsDraft.cookie_mode === 'header' && (
+                  <label className="block text-[11px] font-medium uppercase text-gray-500">
+                    Cookie Header
+                    <textarea
+                      value={downloaderSettingsDraft.cookie_header}
+                      onChange={(event) =>
+                        setDownloaderSettingsDraft((currentSettings) => ({
+                          ...currentSettings,
+                          cookie_header: event.target.value,
+                        }))
+                      }
+                      placeholder="Copy only the value after Cookie: from the Douyin request headers"
+                      spellCheck={false}
+                      rows={5}
+                      className="mt-2 w-full resize-none rounded border border-[#343434] bg-[#121212] px-3 py-2 font-mono text-[11px] normal-case text-gray-200 outline-none focus:border-blue-500"
+                    />
+                    <span className="mt-1 block text-[10px] normal-case leading-relaxed text-gray-500">
+                      Stored locally in this app's settings. Use this when Chrome cookies are locked.
+                    </span>
+                  </label>
+                )}
+
+                <div className="rounded border border-[#343434] bg-[#151515] px-3 py-2 text-[11px] leading-relaxed text-gray-400">
+                  Browser cookies uses the Chrome/Edge profile where Douyin created guest cookies. Let Douyin fully load there, close all browser windows/background processes so cookies are not locked, then download again. Douyin Session is only a separate fallback profile.
+                </div>
               </>
             )}
 

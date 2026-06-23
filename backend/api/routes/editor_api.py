@@ -51,6 +51,25 @@ class TelegramSettingsRequest(BaseModel):
     bot_token: str = ""
     chat_id: str = ""
 
+class DownloaderSettingsRequest(BaseModel):
+    cookie_mode: str = "none"
+    cookies_from_browser: str = ""
+    browser_profile: str = ""
+    cookies_file: str = ""
+    cookie_header: str = ""
+    session_browser: str = "edge"
+
+class DouyinSessionRequest(BaseModel):
+    browser: str = "edge"
+    url: str = ""
+
+class BrowserOpenRequest(BaseModel):
+    browser: str = "chrome"
+    url: str = ""
+
+class BrowserProfilesRequest(BaseModel):
+    browser: str = "chrome"
+
 class TelegramNotificationResult(BaseModel):
     source_url: str = ""
     file_name: str = ""
@@ -221,6 +240,59 @@ async def update_telegram_settings(request: TelegramSettingsRequest):
         bot_token=request.bot_token,
         chat_id=request.chat_id,
     )
+
+@router.get("/settings/downloader")
+async def get_downloader_settings():
+    """Return local yt-dlp downloader settings."""
+    return settings.get_downloader_settings()
+
+@router.post("/settings/downloader")
+async def update_downloader_settings(request: DownloaderSettingsRequest):
+    """Persist local yt-dlp downloader settings for sites that require cookies."""
+    try:
+        return settings.update_downloader_settings(
+            cookie_mode=request.cookie_mode,
+            cookies_from_browser=request.cookies_from_browser,
+            browser_profile=request.browser_profile,
+            cookies_file=request.cookies_file,
+            cookie_header=request.cookie_header,
+            session_browser=request.session_browser,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+@router.post("/downloader/douyin-session/open")
+async def open_douyin_session(request: DouyinSessionRequest):
+    """Open a dedicated browser profile so the user can refresh/login Douyin cookies."""
+    result = VideoDownloader.open_douyin_session(request.browser, request.url)
+    if result["status"] != "opened":
+        raise HTTPException(status_code=400, detail=result.get("message", "Could not open Douyin session"))
+
+    return result
+
+@router.post("/downloader/browser/open")
+async def open_cookie_browser(request: BrowserOpenRequest):
+    """Open the user's normal browser/profile for refreshing site cookies."""
+    result = VideoDownloader.open_cookie_browser(request.browser, request.url)
+    if result["status"] != "opened":
+        raise HTTPException(status_code=400, detail=result.get("message", "Could not open browser"))
+
+    return result
+
+@router.post("/downloader/browser/profiles")
+async def list_browser_profiles(request: BrowserProfilesRequest):
+    """List local browser profiles so yt-dlp can read cookies from the right one."""
+    return VideoDownloader.list_browser_profiles(request.browser)
+
+@router.get("/downloader/cookies/diagnostics")
+async def get_downloader_cookie_diagnostics():
+    """Check whether the current downloader cookie source contains Douyin guest cookies."""
+    return VideoDownloader.cookie_diagnostics()
+
+@router.post("/downloader/douyin-session/status")
+async def get_douyin_session_status(request: DouyinSessionRequest):
+    """Check if the dedicated Douyin session profile has a cookie database."""
+    return VideoDownloader.douyin_session_status(request.browser)
 
 @router.post("/notifications/telegram")
 async def send_telegram_notification(request: TelegramNotificationRequest):
