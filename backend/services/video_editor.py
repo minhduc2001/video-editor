@@ -4,6 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Dict, Any, List
 
+from core.config import settings
+
 class VideoEditorService:
     """Service for mixing audio, rendering subtitles, and exporting final video using FFmpeg"""
 
@@ -16,7 +18,7 @@ class VideoEditorService:
     def _has_audio_stream(video_path: Path) -> bool:
         result = subprocess.run(
             [
-                "ffprobe",
+                settings.FFPROBE_BIN,
                 "-v",
                 "error",
                 "-select_streams",
@@ -43,7 +45,7 @@ class VideoEditorService:
     def _probe_video_size(video_path: Path) -> tuple[int, int]:
         result = subprocess.run(
             [
-                "ffprobe",
+                settings.FFPROBE_BIN,
                 "-v",
                 "error",
                 "-select_streams",
@@ -139,7 +141,7 @@ class VideoEditorService:
             return
 
         VideoEditorService._run_ffmpeg([
-            "ffmpeg",
+            settings.FFMPEG_BIN,
             "-hide_banner",
             "-loglevel",
             "error",
@@ -234,7 +236,7 @@ class VideoEditorService:
             return
 
         cmd = [
-            "ffmpeg",
+            settings.FFMPEG_BIN,
             "-hide_banner",
             "-loglevel",
             "error",
@@ -377,13 +379,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             text_color = VideoEditorService._ass_color(str(clip.get("color", "#ffffff")))
             stroke_color = VideoEditorService._ass_color(str(clip.get("stroke_color", "#000000")))
             stroke_width = max(0, float(clip.get("stroke_width", 0)))
+            shadow_width = 2 if stroke_width <= 0 else 1
             bold = 1 if int(clip.get("font_weight", 700)) >= 700 else 0
             italic = 1 if clip.get("font_style") == "italic" else 0
             text = VideoEditorService._ass_text(str(clip.get("text", "")))
             override = (
                 f"{{\\pos({x},{y})\\an5\\fn{font_name}\\fs{font_size}"
                 f"\\c{text_color}\\3c{stroke_color}\\bord{stroke_width}"
-                f"\\b{bold}\\i{italic}}}"
+                f"\\shad{shadow_width}\\b{bold}\\i{italic}}}"
             )
 
             ass_content += (
@@ -437,7 +440,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 duration = source_end - source_start
                 segment_path = work_dir / f"segment_{index:04d}.mp4"
                 cmd = [
-                    "ffmpeg",
+                    settings.FFMPEG_BIN,
                     "-hide_banner",
                     "-loglevel",
                     "error",
@@ -513,7 +516,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
             joined_path = work_dir / "joined.mp4"
             VideoEditorService._run_ffmpeg([
-                "ffmpeg",
+                settings.FFMPEG_BIN,
                 "-hide_banner",
                 "-loglevel",
                 "error",
@@ -552,7 +555,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     height=target_height,
                 )
                 cmd = [
-                    "ffmpeg",
+                    settings.FFMPEG_BIN,
                     "-hide_banner",
                     "-loglevel",
                     "error",
@@ -659,7 +662,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if not dub_tracks:
             print("No dub tracks found. Rendering video with subtitles only.")
             cmd = [
-                "ffmpeg", "-y", "-i", str(video_path),
+                settings.FFMPEG_BIN, "-y", "-i", str(video_path),
                 "-vf", f"ass='{ass_path}'",
                 str(output_path)
             ]
@@ -667,7 +670,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             return True
 
         # Build massive FFmpeg command
-        cmd = ["ffmpeg", "-y", "-i", str(video_path), "-i", str(bgm_path)]
+        cmd = [settings.FFMPEG_BIN, "-y", "-i", str(video_path), "-i", str(bgm_path)]
         
         for track in dub_tracks:
             cmd.extend(["-i", str(track)])

@@ -65,5 +65,9 @@ demucs_audio.save_audio = save_audio_without_torchcodec
 demucs_separate.save_audio = save_audio_without_torchcodec
 
 
+def run_demucs(args: list[str] | None = None):
+    return demucs_separate.main(args)
+
+
 if __name__ == "__main__":
-    sys.exit(demucs_separate.main())
+    sys.exit(run_demucs())

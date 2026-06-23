@@ -1,0 +1,392 @@
+name: Build desktop apps
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App version to stamp, for example 0.1.1. Empty uses the tag or package version."
+        required: false
+        default: ""
+      release_tag:
+        description: "Optional release tag to publish, for example v0.1.1. Empty uploads artifacts only unless this run is a v* tag push."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PYTHON_VERSION: "3.12"
+  CARGO_TERM_COLOR: always
+  PYTHONUTF8: "1"
+
+jobs:
+  build-windows-x64:
+    name: Build Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            frontend/src-tauri/target
+          key: windows-x64-cargo-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
+          restore-keys: windows-x64-cargo-
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install FFmpeg
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Resolve app version
+        id: version
+        shell: bash
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version || '' }}
+          DISPATCH_RELEASE_TAG: ${{ github.event.inputs.release_tag || '' }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="$DISPATCH_VERSION"
+          RELEASE_BUILD=false
+          if [[ -z "$VERSION" && "$DISPATCH_RELEASE_TAG" == v* ]]; then
+            VERSION="${DISPATCH_RELEASE_TAG#v}"
+          fi
+          if [[ -z "$VERSION" && "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          fi
+          if [[ "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
+            RELEASE_BUILD=true
+          fi
+          if [[ -n "$DISPATCH_RELEASE_TAG" ]]; then
+            RELEASE_BUILD=true
+          fi
+          if [[ -z "$VERSION" ]]; then
+            VERSION="$(node -p "require('./frontend/package.json').version")"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){2}([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version '$VERSION' is not valid semver. Use a value like 0.1.1 or a tag like v0.1.1."
+            exit 1
+          fi
+          export APP_VERSION="$VERSION"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_BUILD=$RELEASE_BUILD" >> "$GITHUB_ENV"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_build=$RELEASE_BUILD" >> "$GITHUB_OUTPUT"
+          node - <<'NODE'
+          const fs = require("fs");
+          const version = process.env.APP_VERSION;
+          for (const file of ["frontend/package.json", "frontend/src-tauri/tauri.conf.json"]) {
+            const data = JSON.parse(fs.readFileSync(file, "utf8"));
+            data.version = version;
+            fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+          }
+          NODE
+          echo "Building app version $VERSION"
+          echo "Release build: $RELEASE_BUILD"
+
+      - name: Install backend packaging dependencies
+        shell: pwsh
+        run: |
+          python -m venv backend\.build-venv
+          backend\.build-venv\Scripts\python.exe -m pip install --upgrade pip
+          backend\.build-venv\Scripts\python.exe -m pip install -r backend\requirements.txt pyinstaller torchcodec
+
+      - name: Build backend sidecar
+        shell: pwsh
+        run: |
+          backend\.build-venv\Scripts\python.exe -m PyInstaller backend\video_editor_backend.spec `
+            --noconfirm `
+            --clean `
+            --distpath frontend\src-tauri\binaries `
+            --workpath backend\build
+          if (!(Test-Path frontend\src-tauri\binaries\video-editor-backend\video-editor-backend.exe)) {
+            throw "Backend sidecar was not created."
+          }
+
+      - name: Prepare updater config
+        working-directory: frontend
+        shell: bash
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/write-updater-config.mjs src-tauri/.generated-updater.conf.json
+
+      - name: Build Tauri installer
+        working-directory: frontend
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $tauriArgs = @("run", "tauri", "--", "build")
+          if (Test-Path "src-tauri\.generated-updater.conf.json") {
+            $tauriArgs += @("--config", "src-tauri/.generated-updater.conf.json")
+          }
+          & npm @tauriArgs
+
+      - name: Collect Windows artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts\windows | Out-Null
+          Get-ChildItem frontend\src-tauri\target\release\bundle\nsis -Filter *.exe |
+            Copy-Item -Destination artifacts\windows
+          Get-ChildItem frontend\src-tauri\target\release\bundle\nsis -Filter *.exe.sig -ErrorAction SilentlyContinue |
+            Copy-Item -Destination artifacts\windows
+          if ($env:RELEASE_BUILD -eq "true" -and -not (Get-ChildItem artifacts\windows -Filter *.exe.sig -ErrorAction SilentlyContinue)) {
+            throw "Windows updater signature was not created."
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-editor-windows-x64-${{ steps.version.outputs.value }}
+          path: artifacts/windows/*
+          if-no-files-found: error
+
+  build-macos-arm64:
+    name: Build macOS Apple Silicon
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Apple Silicon runner
+        run: |
+          uname -m
+          test "$(uname -m)" = "arm64"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            frontend/src-tauri/target
+          key: macos-arm64-cargo-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
+          restore-keys: macos-arm64-cargo-
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Resolve app version
+        id: version
+        shell: bash
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version || '' }}
+          DISPATCH_RELEASE_TAG: ${{ github.event.inputs.release_tag || '' }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="$DISPATCH_VERSION"
+          RELEASE_BUILD=false
+          if [[ -z "$VERSION" && "$DISPATCH_RELEASE_TAG" == v* ]]; then
+            VERSION="${DISPATCH_RELEASE_TAG#v}"
+          fi
+          if [[ -z "$VERSION" && "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          fi
+          if [[ "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
+            RELEASE_BUILD=true
+          fi
+          if [[ -n "$DISPATCH_RELEASE_TAG" ]]; then
+            RELEASE_BUILD=true
+          fi
+          if [[ -z "$VERSION" ]]; then
+            VERSION="$(node -p "require('./frontend/package.json').version")"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){2}([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version '$VERSION' is not valid semver. Use a value like 0.1.1 or a tag like v0.1.1."
+            exit 1
+          fi
+          export APP_VERSION="$VERSION"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_BUILD=$RELEASE_BUILD" >> "$GITHUB_ENV"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_build=$RELEASE_BUILD" >> "$GITHUB_OUTPUT"
+          node - <<'NODE'
+          const fs = require("fs");
+          const version = process.env.APP_VERSION;
+          for (const file of ["frontend/package.json", "frontend/src-tauri/tauri.conf.json"]) {
+            const data = JSON.parse(fs.readFileSync(file, "utf8"));
+            data.version = version;
+            fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+          }
+          NODE
+          echo "Building app version $VERSION"
+          echo "Release build: $RELEASE_BUILD"
+
+      - name: Install backend packaging dependencies
+        run: |
+          python -m venv backend/.build-venv
+          backend/.build-venv/bin/python -m pip install --upgrade pip
+          backend/.build-venv/bin/python -m pip install -r backend/requirements.txt pyinstaller torchcodec
+
+      - name: Build backend sidecar
+        run: |
+          backend/.build-venv/bin/python -m PyInstaller backend/video_editor_backend.spec \
+            --noconfirm \
+            --clean \
+            --distpath frontend/src-tauri/binaries \
+            --workpath backend/build
+          test -x frontend/src-tauri/binaries/video-editor-backend/video-editor-backend
+
+      - name: Prepare updater config
+        working-directory: frontend
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/write-updater-config.mjs src-tauri/.generated-macos.conf.json src-tauri/tauri.macos.conf.json
+
+      - name: Build Tauri app
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri -- build --target aarch64-apple-darwin --config src-tauri/.generated-macos.conf.json
+
+      - name: Collect macOS artifacts
+        run: |
+          mkdir -p artifacts/macos
+          cp frontend/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg artifacts/macos/
+          if [[ "$RELEASE_BUILD" == "true" ]]; then
+            cp frontend/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz artifacts/macos/
+            cp frontend/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig artifacts/macos/
+          fi
+          ditto -c -k --sequesterRsrc --keepParent \
+            "frontend/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Video Editor.app" \
+            "artifacts/macos/Video-Editor_${APP_VERSION}_macos-arm64.app.zip"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-editor-macos-arm64-${{ steps.version.outputs.value }}
+          path: artifacts/macos/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows-x64
+      - build-macos-arm64
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_TAG: ${{ github.event.inputs.release_tag || '' }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          TAG="$DISPATCH_RELEASE_TAG"
+          if [[ -z "$TAG" && "$REF_TYPE" == "tag" ]]; then
+            TAG="$REF_NAME"
+          fi
+          if ! [[ "$TAG" =~ ^v[0-9]+(\.[0-9]+){2}([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag '$TAG' is not valid. Use a tag like v0.1.1."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create updater manifest
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: node frontend/scripts/create-update-manifest.mjs release-assets release-assets/latest.json
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes "Automated desktop build for $TAG."
+          fi
+          mapfile -d '' FILES < <(find release-assets -type f -print0)
+          if [[ ${#FILES[@]} -eq 0 ]]; then
+            echo "::error::No release assets were downloaded."
+            exit 1
+          fi
+          gh release upload "$TAG" "${FILES[@]}" --clobber

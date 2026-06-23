@@ -1,6 +1,4 @@
 import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, Any
 
@@ -16,7 +14,7 @@ class AudioProcessor:
             return True
             
         cmd = [
-            "ffmpeg", "-y", "-i", str(video_path), 
+            settings.FFMPEG_BIN, "-y", "-i", str(video_path),
             "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", 
             str(output_audio_path)
         ]
@@ -49,28 +47,27 @@ class AudioProcessor:
                 "bgm_path": str(expected_bgm_path)
             }
             
-        # Command: demucs -n htdemucs_ft --two-stems=vocals -o <output> <input_file>
-        demucs_runner = Path(__file__).with_name("demucs_torchcodec_compat.py")
-        cmd = [
-            sys.executable,
-            str(demucs_runner),
+        demucs_args = [
             "-n", settings.DEMUCS_MODEL,
             "--two-stems=vocals",
             "-o", str(demucs_out),
             str(audio_path)
         ]
         
-        print(f"Running Demucs for vocal isolation: {' '.join(cmd)}")
+        print(f"Running Demucs for vocal isolation: demucs {' '.join(demucs_args)}")
         try:
-            # This is heavy and takes time
-            subprocess.run(cmd, check=True)
+            from services.demucs_torchcodec_compat import run_demucs
+
+            exit_code = run_demucs(demucs_args)
+            if exit_code not in (0, None):
+                raise RuntimeError(f"Demucs exited with code {exit_code}")
             
             return {
                 "status": "success",
                 "vocals_path": str(expected_vocal_path),
                 "bgm_path": str(expected_bgm_path)
             }
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             print(f"Demucs failed: {e}")
             return {
                 "status": "error",

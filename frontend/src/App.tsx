@@ -44,6 +44,9 @@ import {
   DEFAULT_TEXT_STROKE_WIDTH,
   DEFAULT_TEXT_STYLE,
   DEFAULT_TEXT_WEIGHT,
+  getEffectiveTextBackgroundColor,
+  getEffectiveTextBackgroundOpacity,
+  getEffectiveTextColor,
   AUTO_CAPTION_BACKGROUND_COLOR,
   AUTO_CAPTION_BACKGROUND_OPACITY,
   AUTO_CAPTION_COVER_COLOR,
@@ -62,6 +65,7 @@ import {
   type ProjectMetadata,
 } from './lib/project-file';
 import { formatDuration } from './lib/media';
+import { checkForAppUpdates } from './lib/auto-updater';
 import type {
   AllInOneAutomationOptions,
   AllInOneAutomationResult,
@@ -399,11 +403,15 @@ const buildAutoCaptionCoverMasks = (
   timelineClipId: string,
   video?: ImportedVideo | null
 ): BlurMaskClip[] => {
-  const { height } = getVideoDesignSize(video);
+  const { width, height } = getVideoDesignSize(video);
 
   return clips.map((clip) => {
-    const lineCount = Math.max(1, clip.text.split('\n').length);
-    const coverHeight = clamp(((clip.fontSize * lineCount * 1.45) / height) * 100 + 2.4, 7, 18);
+    const lines = clip.text.split('\n');
+    const lineCount = Math.max(1, lines.length);
+    const longestLineLength = Math.max(...lines.map((line) => line.trim().length), 1);
+    const estimatedTextWidth = ((clip.fontSize * longestLineLength * 0.56) / width) * 100;
+    const coverWidth = clamp(estimatedTextWidth + 7, 24, 86);
+    const coverHeight = clamp(((clip.fontSize * lineCount * 1.38) / height) * 100 + 1.8, 5.8, 16);
 
     return {
       id: crypto.randomUUID(),
@@ -412,7 +420,7 @@ const buildAutoCaptionCoverMasks = (
       end: clip.end,
       x: 50,
       y: clip.y,
-      width: 92,
+      width: coverWidth,
       height: coverHeight,
       intensity: 16,
       mode: 'solid' as const,
@@ -501,6 +509,10 @@ function App() {
   const historyGroupTimerRef = useRef<number | null>(null);
   const copiedTimelineClipIdRef = useRef<string | null>(null);
   const autoCaptionRequestRef = useRef(false);
+
+  useEffect(() => {
+    void checkForAppUpdates();
+  }, []);
 
   const selectedTimelineClip = useMemo(
     () => timelineClips.find((clip) => clip.id === selectedTimelineClipId) ?? null,
@@ -2661,11 +2673,11 @@ function App() {
                 font_size: clip.fontSize,
                 font_weight: clip.fontWeight,
                 font_style: clip.fontStyle,
-                color: clip.color,
+                color: getEffectiveTextColor(clip),
                 stroke_color: clip.strokeColor,
                 stroke_width: clip.strokeWidth,
-                background_color: clip.backgroundColor,
-                background_opacity: clip.backgroundOpacity,
+                background_color: getEffectiveTextBackgroundColor(clip),
+                background_opacity: getEffectiveTextBackgroundOpacity(clip),
               }))
             : [],
           blur_masks: captionCoverMasks.map((clip) => ({
@@ -2905,11 +2917,11 @@ function App() {
         font_size: clip.fontSize,
         font_weight: clip.fontWeight,
         font_style: clip.fontStyle,
-        color: clip.color,
+        color: getEffectiveTextColor(clip),
         stroke_color: clip.strokeColor,
         stroke_width: clip.strokeWidth,
-        background_color: clip.backgroundColor,
-        background_opacity: clip.backgroundOpacity,
+        background_color: getEffectiveTextBackgroundColor(clip),
+        background_opacity: getEffectiveTextBackgroundOpacity(clip),
       }));
       const exportBlurMasks = buildBlurMaskEntries().map((clip) => ({
         start: clip.timelineStart,

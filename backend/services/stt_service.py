@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Dict, Any, List
-from faster_whisper import WhisperModel
 
 from core.config import settings
 
@@ -24,6 +23,8 @@ class STTService:
 
         if self.model is None or model_changed:
             print(f"Loading Faster Whisper model: {settings.WHISPER_MODEL_SIZE} ({settings.WHISPER_COMPUTE_TYPE})")
+            from faster_whisper import WhisperModel
+
             # For low-end machines, we might force CPU if CUDA is OOM, but faster-whisper handles it gracefully 
             # if we specify device="auto". We will use device="auto".
             self.model = WhisperModel(

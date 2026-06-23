@@ -21,11 +21,45 @@ export const DEFAULT_TEXT_STROKE_COLOR = '#111111'
 export const DEFAULT_TEXT_STROKE_WIDTH = 0
 export const DEFAULT_TEXT_BACKGROUND_COLOR = '#000000'
 export const DEFAULT_TEXT_BACKGROUND_OPACITY = 0
-export const AUTO_CAPTION_TEXT_COLOR = '#111111'
-export const AUTO_CAPTION_BACKGROUND_COLOR = '#ffd84d'
-export const AUTO_CAPTION_BACKGROUND_OPACITY = 0.92
-export const AUTO_CAPTION_COVER_COLOR = '#ffd84d'
-export const AUTO_CAPTION_COVER_OPACITY = 0.86
+export const AUTO_CAPTION_TEXT_COLOR = '#ffffff'
+export const AUTO_CAPTION_BACKGROUND_COLOR = '#000000'
+export const AUTO_CAPTION_BACKGROUND_OPACITY = 0
+export const AUTO_CAPTION_COVER_COLOR = '#050505'
+export const AUTO_CAPTION_COVER_OPACITY = 0.58
+
+type TextStyleLike = {
+  source?: string
+  color?: string
+  backgroundColor?: string
+  backgroundOpacity?: number
+}
+
+const normalizeHex = (hex?: string) => (hex ?? '').trim().toLowerCase()
+
+export const isLegacyAutoCaptionPillStyle = (clip: TextStyleLike) => (
+  clip.source === 'caption' &&
+  normalizeHex(clip.color) === '#111111' &&
+  normalizeHex(clip.backgroundColor) === '#ffd84d' &&
+  (clip.backgroundOpacity ?? 0) >= 0.8
+)
+
+export const getEffectiveTextColor = (clip: TextStyleLike, fallback = DEFAULT_TEXT_COLOR) => (
+  isLegacyAutoCaptionPillStyle(clip) ? AUTO_CAPTION_TEXT_COLOR : clip.color ?? fallback
+)
+
+export const getEffectiveTextBackgroundColor = (
+  clip: TextStyleLike,
+  fallback = DEFAULT_TEXT_BACKGROUND_COLOR
+) => (
+  isLegacyAutoCaptionPillStyle(clip) ? DEFAULT_TEXT_BACKGROUND_COLOR : clip.backgroundColor ?? fallback
+)
+
+export const getEffectiveTextBackgroundOpacity = (
+  clip: TextStyleLike,
+  fallback = DEFAULT_TEXT_BACKGROUND_OPACITY
+) => (
+  isLegacyAutoCaptionPillStyle(clip) ? DEFAULT_TEXT_BACKGROUND_OPACITY : clip.backgroundOpacity ?? fallback
+)
 
 export const hexToRgba = (hex: string, opacity: number) => {
   const normalizedHex = hex.replace('#', '');

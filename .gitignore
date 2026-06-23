@@ -1,5 +1,8 @@
 backend/user_settings.json
 backend/venv/
+backend/.build-venv/
+backend/build/
+backend/dist/
 backend/models/
 backend/output/
 backend/temp_projects/
@@ -8,11 +11,16 @@ backend/**/__pycache__/
 backend/**/*.pyc
 
 frontend/node_modules/
+frontend/.node_modules_*/
 frontend/dist/
+frontend/src-tauri/binaries/
+frontend/src-tauri/.generated-*.conf.json
 frontend/src-tauri/target/
 frontend/vite-dev.*.log
 
 tmp/
+build/
+dist/
 .agents/
 .env
 *.log

@@ -3,15 +3,15 @@ import { Rnd } from 'react-rnd';
 import { Film, Maximize, Pause, Play, Settings, SkipBack, SkipForward, VolumeX } from 'lucide-react';
 import { formatDuration } from '@/lib/media';
 import {
-  DEFAULT_TEXT_BACKGROUND_COLOR,
-  DEFAULT_TEXT_BACKGROUND_OPACITY,
-  DEFAULT_TEXT_COLOR,
   DEFAULT_TEXT_FONT,
   DEFAULT_TEXT_SIZE,
   DEFAULT_TEXT_STROKE_COLOR,
   DEFAULT_TEXT_STROKE_WIDTH,
   DEFAULT_TEXT_STYLE,
   DEFAULT_TEXT_WEIGHT,
+  getEffectiveTextBackgroundColor,
+  getEffectiveTextBackgroundOpacity,
+  getEffectiveTextColor,
   hexToRgba,
 } from '@/lib/text-style';
 import type { BlurMaskClip, DubbingClip, ImportedVideo, SeekCommand, TextClip } from '@/types/media';
@@ -430,6 +430,8 @@ export const Player = ({
             const maskHeight = Math.max(16, (clip.height / 100) * canvasSize.height);
             const maskLeft = (clip.x / 100) * canvasSize.width - maskWidth / 2;
             const maskTop = (clip.y / 100) * canvasSize.height - maskHeight / 2;
+            const isCaptionCover = clip.source === 'caption_cover';
+            const isSelected = selectedBlurMaskClipId === clip.id;
 
             return (
               <Rnd
@@ -486,10 +488,14 @@ export const Player = ({
                 className="z-10 cursor-move"
               >
                 <div
-                  className={`h-full w-full rounded border bg-white/10 ${
-                    selectedBlurMaskClipId === clip.id
+                  className={`h-full w-full border bg-white/10 ${
+                    isCaptionCover ? 'rounded-sm' : 'rounded'
+                  } ${
+                    isSelected
                       ? 'border-white ring-1 ring-cyan-300'
-                      : 'border-cyan-300/80'
+                      : isCaptionCover
+                        ? 'border-transparent'
+                        : 'border-cyan-300/80'
                   }`}
                   style={{
                     backgroundColor:
@@ -498,7 +504,9 @@ export const Player = ({
                         : undefined,
                     backdropFilter: clip.mode === 'solid' ? undefined : `blur(${clip.intensity}px)`,
                     WebkitBackdropFilter: clip.mode === 'solid' ? undefined : `blur(${clip.intensity}px)`,
-                    boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.45)',
+                    boxShadow: isSelected || !isCaptionCover
+                      ? 'inset 0 0 0 1px rgba(0, 0, 0, 0.45)'
+                      : '0 6px 18px rgba(0, 0, 0, 0.18)',
                   }}
                 />
               </Rnd>
@@ -543,10 +551,10 @@ export const Player = ({
                   fontSize: `${Math.max(8, (clip.fontSize || DEFAULT_TEXT_SIZE) * previewFontScale)}px`,
                   fontWeight: clip.fontWeight ?? DEFAULT_TEXT_WEIGHT,
                   fontStyle: clip.fontStyle ?? DEFAULT_TEXT_STYLE,
-                  color: clip.color ?? DEFAULT_TEXT_COLOR,
+                  color: getEffectiveTextColor(clip),
                   backgroundColor: hexToRgba(
-                    clip.backgroundColor ?? DEFAULT_TEXT_BACKGROUND_COLOR,
-                    clip.backgroundOpacity ?? DEFAULT_TEXT_BACKGROUND_OPACITY
+                    getEffectiveTextBackgroundColor(clip),
+                    getEffectiveTextBackgroundOpacity(clip)
                   ),
                   WebkitTextStroke: `${Math.max(0, (clip.strokeWidth ?? DEFAULT_TEXT_STROKE_WIDTH) * previewFontScale)}px ${
                     clip.strokeColor ?? DEFAULT_TEXT_STROKE_COLOR
@@ -554,7 +562,9 @@ export const Player = ({
                   textShadow:
                     (clip.strokeWidth ?? DEFAULT_TEXT_STROKE_WIDTH) > 0
                       ? '0 1px 2px rgba(0, 0, 0, 0.45)'
-                      : '0 1px 2px rgba(0, 0, 0, 0.25)',
+                      : clip.source === 'caption'
+                        ? '0 2px 4px rgba(0,0,0,0.86), 0 0 14px rgba(0,0,0,0.55)'
+                        : '0 1px 2px rgba(0, 0, 0, 0.25)',
                 }}
               >
                 {clip.text}

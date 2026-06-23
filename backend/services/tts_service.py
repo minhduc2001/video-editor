@@ -240,7 +240,7 @@ class TTSService:
     def get_audio_duration(audio_path: Path) -> float:
         """Gets duration of an audio file using FFprobe"""
         cmd = [
-            "ffprobe", "-v", "error", "-show_entries",
+            settings.FFPROBE_BIN, "-v", "error", "-show_entries",
             "format=duration", "-of",
             "default=noprint_wrappers=1:nokey=1", str(audio_path)
         ]
@@ -271,7 +271,7 @@ class TTSService:
         ratio = max(0.5, min(ratio, 2.0))
         
         cmd = [
-            "ffmpeg", "-y", "-i", str(input_path),
+            settings.FFMPEG_BIN, "-y", "-i", str(input_path),
             "-filter:a", f"atempo={ratio}",
             str(output_path)
         ]

@@ -1,15 +1,57 @@
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
 # --- DIRECTORY CONFIGURATION ---
-BASE_DIR = Path(__file__).resolve().parent.parent
+SOURCE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _packaged_data_dir() -> Path:
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / "VideoEditor" / "backend"
+
+    return Path.home() / "AppData" / "Local" / "VideoEditor" / "backend"
+
+
+def _runtime_base_dir() -> Path:
+    override = os.getenv("VIDEO_EDITOR_BACKEND_HOME", "").strip()
+    if override:
+        return Path(override)
+
+    if getattr(sys, "frozen", False):
+        return _packaged_data_dir()
+
+    return SOURCE_DIR
+
+
+def _bundled_binary(name: str) -> str:
+    executable_name = f"{name}.exe" if os.name == "nt" else name
+    candidates = []
+
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass:
+            candidates.append(Path(meipass) / executable_name)
+        candidates.append(Path(sys.executable).resolve().parent / executable_name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return executable_name
+
+
+BASE_DIR = _runtime_base_dir()
 TEMP_DIR = BASE_DIR / "temp_projects"
 MODELS_DIR = BASE_DIR / "models"
 OUTPUT_DIR = BASE_DIR / "output"
 USER_SETTINGS_PATH = BASE_DIR / "user_settings.json"
+FFMPEG_BIN = _bundled_binary("ffmpeg")
+FFPROBE_BIN = _bundled_binary("ffprobe")
 
 TRANSLATION_DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
@@ -40,6 +82,8 @@ class Settings:
     TEMP_DIR: Path = TEMP_DIR
     MODELS_DIR: Path = MODELS_DIR
     OUTPUT_DIR: Path = OUTPUT_DIR
+    FFMPEG_BIN: str = FFMPEG_BIN
+    FFPROBE_BIN: str = FFPROBE_BIN
     
     # --- TRANSLATION CONFIGURATION ---
     # User can set API Key via UI, which will be stored in a local SQLite DB or .env
