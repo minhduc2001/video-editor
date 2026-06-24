@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Clock3, Download, FilePlus2, FileText, FolderOpen, Save, Settings as SettingsIcon, X } from 'lucide-react';
+import { CheckCircle2, Clock3, Download, FilePlus2, FileText, FolderOpen, RefreshCw, Save, Settings as SettingsIcon, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { Player } from './components/Player';
 import { Timeline } from './components/Timeline';
@@ -74,7 +74,11 @@ import {
   type ProjectMetadata,
 } from './lib/project-file';
 import { formatDuration } from './lib/media';
-import { checkForAppUpdates } from './lib/auto-updater';
+import {
+  checkForAppUpdates,
+  getCurrentAppVersion,
+  type AppUpdateCheckResult,
+} from './lib/auto-updater';
 import type {
   AllInOneAutomationOptions,
   AllInOneAutomationResult,
@@ -95,6 +99,7 @@ type SettingsStatus = 'idle' | 'loading' | 'saving' | 'saved' | 'error';
 type SettingsTab = 'translation' | 'tts' | 'stt' | 'downloader' | 'telegram';
 type TranslationModelsStatus = 'idle' | 'loading' | 'ready' | 'error';
 type DubbingStatus = 'idle' | 'generating' | 'ready' | 'error';
+type UpdateStatus = 'idle' | 'checking' | AppUpdateCheckResult['status'];
 const MIN_VIDEO_CLIP_DURATION = 0.1;
 const MIN_TEXT_CLIP_DURATION = 0.2;
 const PANE_LAYOUT_STORAGE_KEY = 'ai-video-editor-pane-layout';
@@ -522,6 +527,9 @@ function App() {
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle');
+  const [updateMessage, setUpdateMessage] = useState('');
   const [settingsStatus, setSettingsStatus] = useState<SettingsStatus>('idle');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('translation');
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -595,8 +603,39 @@ function App() {
   const copiedTimelineClipIdRef = useRef<string | null>(null);
   const autoCaptionRequestRef = useRef(false);
 
+  const applyUpdateResult = (result: AppUpdateCheckResult) => {
+    setUpdateStatus(result.status);
+    setUpdateMessage(result.message);
+  };
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking');
+    setUpdateMessage('Checking for updates...');
+
+    const result = await checkForAppUpdates({ notifyWhenCurrent: true });
+    applyUpdateResult(result);
+  };
+
   useEffect(() => {
-    void checkForAppUpdates();
+    let isCancelled = false;
+
+    void getCurrentAppVersion()
+      .then((version) => {
+        if (!isCancelled) {
+          setAppVersion(version);
+        }
+      });
+
+    void checkForAppUpdates()
+      .then((result) => {
+        if (!isCancelled && result.status !== 'current') {
+          applyUpdateResult(result);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const selectedTimelineClip = useMemo(
@@ -824,6 +863,46 @@ function App() {
       reduceOriginalAudioAll,
       videoDataUrlCache: videoDataUrlCacheRef.current,
     });
+
+  const renderUpdateControl = (compact = false) => {
+    const statusClass =
+      updateStatus === 'error'
+        ? 'text-red-300'
+        : updateStatus === 'available' || updateStatus === 'installed'
+          ? 'text-emerald-300'
+          : updateStatus === 'checking'
+            ? 'text-blue-300'
+            : 'text-gray-500';
+
+    return (
+      <div className={`flex ${compact ? 'items-center' : 'items-end'} gap-2`}>
+        <div className="rounded border border-[#343434] bg-[#151515] px-2 py-1 text-[10px] text-gray-300">
+          v{appVersion}
+        </div>
+        <button
+          type="button"
+          disabled={updateStatus === 'checking'}
+          onClick={() => void handleCheckForUpdates()}
+          title={updateMessage || 'Check for app updates'}
+          className="flex items-center gap-1.5 rounded border border-[#343434] bg-[#1e1e1e] px-2.5 py-1 text-[11px] text-gray-200 hover:bg-[#2d2d2d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {updateStatus === 'checking' ? (
+            <RefreshCw size={12} className="animate-spin" />
+          ) : updateStatus === 'current' || updateStatus === 'installed' ? (
+            <CheckCircle2 size={12} />
+          ) : (
+            <RefreshCw size={12} />
+          )}
+          {updateStatus === 'checking' ? 'Checking' : 'Check update'}
+        </button>
+        {!compact && updateMessage && (
+          <div className={`max-w-[180px] truncate text-[10px] ${statusClass}`}>
+            {updateMessage}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const loadProjectSnapshot = async (projectFile: ProjectFile, status: string) => {
     setIsLoadingProject(true);
@@ -4179,6 +4258,7 @@ function App() {
               <div className="mt-1 text-[11px] text-gray-500">{projectStatus}</div>
             </div>
             <div className="flex items-center gap-2">
+              {renderUpdateControl(true)}
               {recentProjectFile && (
                 <div className="text-right text-[10px] text-gray-500">
                   <div>Recent</div>
@@ -4271,6 +4351,7 @@ function App() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {renderUpdateControl(true)}
           <button
             type="button"
             onClick={handleCreateProject}

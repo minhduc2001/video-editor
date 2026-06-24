@@ -4,6 +4,8 @@ import path from "path";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// @ts-expect-error process is a nodejs global
+const appVersion = process.env.npm_package_version ?? "0.1.0";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -14,7 +16,8 @@ export default defineConfig(async () => ({
     },
   },
   define: {
-    'process.env': {}
+    'process.env': {},
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

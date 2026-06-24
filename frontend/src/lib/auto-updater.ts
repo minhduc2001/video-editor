@@ -6,6 +6,12 @@ type DownloadProgress = {
   }
 }
 
+export type AppUpdateCheckResult = {
+  status: 'unsupported' | 'current' | 'available' | 'installed' | 'error'
+  message: string
+  version?: string
+}
+
 const isTauriRuntime = () =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -20,9 +26,33 @@ const formatBytes = (bytes: number) => {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-export const checkForAppUpdates = async () => {
+export const getCurrentAppVersion = async () => {
   if (!isTauriRuntime()) {
-    return;
+    return __APP_VERSION__;
+  }
+
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    return await getVersion();
+  } catch {
+    return __APP_VERSION__;
+  }
+};
+
+export const checkForAppUpdates = async (
+  options: { notifyWhenCurrent?: boolean } = {}
+): Promise<AppUpdateCheckResult> => {
+  if (!isTauriRuntime()) {
+    const result = {
+      status: 'unsupported',
+      message: 'Update checks are available in the installed desktop app.',
+    } satisfies AppUpdateCheckResult;
+
+    if (options.notifyWhenCurrent) {
+      window.alert(result.message);
+    }
+
+    return result;
   }
 
   try {
@@ -33,16 +63,29 @@ export const checkForAppUpdates = async () => {
 
     const update = await check({ timeout: 30_000 });
     if (!update) {
-      return;
+      const result = {
+        status: 'current',
+        message: 'You are already on the latest version.',
+      } satisfies AppUpdateCheckResult;
+
+      if (options.notifyWhenCurrent) {
+        window.alert(result.message);
+      }
+
+      return result;
     }
 
     const releaseNotes = update.body ? `\n\n${update.body}` : '';
     const shouldInstall = window.confirm(
-      `Có bản cập nhật mới ${update.version}. Tải và cài đặt ngay bây giờ?${releaseNotes}`
+      `New version ${update.version} is available. Download and install now?${releaseNotes}`
     );
 
     if (!shouldInstall) {
-      return;
+      return {
+        status: 'available',
+        version: update.version,
+        message: `Version ${update.version} is available.`,
+      };
     }
 
     let downloaded = 0;
@@ -64,19 +107,32 @@ export const checkForAppUpdates = async () => {
       }
     });
 
-    window.alert('Cập nhật đã cài đặt xong. Ứng dụng sẽ khởi động lại.');
+    window.alert('Update installed. The app will restart now.');
     await relaunch();
+
+    return {
+      status: 'installed',
+      version: update.version,
+      message: `Version ${update.version} was installed.`,
+    };
   } catch (error) {
     const message = getErrorMessage(error);
     const isExpectedLocalBuildError =
       /updater/i.test(message) &&
       /(not configured|pubkey|endpoint|signature|permission)/i.test(message);
+    const result = {
+      status: 'error',
+      message: isExpectedLocalBuildError
+        ? `Auto update is not active for this build: ${message}`
+        : `Update check failed: ${message}`,
+    } satisfies AppUpdateCheckResult;
 
-    if (isExpectedLocalBuildError) {
-      console.info(`Auto update is not active for this build: ${message}`);
-      return;
+    if (options.notifyWhenCurrent) {
+      window.alert(result.message);
+    } else {
+      console.warn(result.message);
     }
 
-    console.warn(`Auto update check failed: ${message}`);
+    return result;
   }
 };
