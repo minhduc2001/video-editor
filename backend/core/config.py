@@ -105,12 +105,12 @@ class Settings:
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 
     # --- DOWNLOADER / YT-DLP ---
-    DOWNLOADER_COOKIE_MODE: str = os.getenv("DOWNLOADER_COOKIE_MODE", "none")
+    DOWNLOADER_COOKIE_MODE: str = os.getenv("DOWNLOADER_COOKIE_MODE", "auto")
     DOWNLOADER_COOKIES_FROM_BROWSER: str = os.getenv("DOWNLOADER_COOKIES_FROM_BROWSER", "chrome")
     DOWNLOADER_BROWSER_PROFILE: str = os.getenv("DOWNLOADER_BROWSER_PROFILE", "")
     DOWNLOADER_COOKIES_FILE: str = os.getenv("DOWNLOADER_COOKIES_FILE", "")
     DOWNLOADER_COOKIE_HEADER: str = os.getenv("DOWNLOADER_COOKIE_HEADER", "")
-    DOWNLOADER_SESSION_BROWSER: str = os.getenv("DOWNLOADER_SESSION_BROWSER", "edge")
+    DOWNLOADER_SESSION_BROWSER: str = os.getenv("DOWNLOADER_SESSION_BROWSER", "chrome")
     
     # --- HARDWARE OPTIMIZATION ---
     # For low-end machines (máy yếu), we should aggressively clean up temp files
@@ -223,7 +223,7 @@ class Settings:
             "cookie_header": self.DOWNLOADER_COOKIE_HEADER,
             "session_browser": self.DOWNLOADER_SESSION_BROWSER,
             "session_profile_path": str(self.downloader_session_profile_dir(self.DOWNLOADER_SESSION_BROWSER)),
-            "cookie_mode_options": ["none", "session", "browser", "file", "header"],
+            "cookie_mode_options": ["auto", "none", "session", "browser", "file", "header"],
             "browser_options": ["edge", "chrome", "firefox", "brave", "chromium", "opera", "vivaldi"],
             "session_browser_options": ["edge", "chrome"],
         }
@@ -322,8 +322,8 @@ class Settings:
         cookie_header: str = "",
         session_browser: str = "",
     ) -> Dict[str, Any]:
-        normalized_cookie_mode = cookie_mode.strip().lower() or "none"
-        if normalized_cookie_mode not in {"none", "session", "browser", "file", "header"}:
+        normalized_cookie_mode = cookie_mode.strip().lower() or "auto"
+        if normalized_cookie_mode not in {"auto", "none", "session", "browser", "file", "header"}:
             raise ValueError(f"Unsupported downloader cookie mode: {cookie_mode}")
 
         self.DOWNLOADER_COOKIE_MODE = normalized_cookie_mode

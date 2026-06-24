@@ -375,6 +375,72 @@ class VideoDownloader:
         }
 
     @staticmethod
+    def refresh_douyin_guest_cookies(url: str, browser: str = "", wait_seconds: float = 12) -> Dict[str, Any]:
+        browser_candidates = [
+            (browser or "").strip().lower(),
+            (settings.DOWNLOADER_SESSION_BROWSER or "").strip().lower(),
+            "chrome",
+            "edge",
+        ]
+        browser_name = next((candidate for candidate in browser_candidates if candidate), "chrome")
+        executable = None
+        for candidate in dict.fromkeys(browser_candidates):
+            if not candidate:
+                continue
+            executable = VideoDownloader._browser_executable(candidate)
+            if executable:
+                browser_name = candidate
+                break
+
+        if not executable:
+            return {
+                "status": "error",
+                "message": "Could not find Chrome or Edge to refresh Douyin guest cookies.",
+            }
+
+        user_data_dir = settings.downloader_session_user_data_dir(browser_name)
+        profile_dir = settings.downloader_session_profile_dir(browser_name)
+        user_data_dir.mkdir(parents=True, exist_ok=True)
+        target_url = url.strip() if url.strip().startswith(("http://", "https://")) else VideoDownloader.DOUYIN_LOGIN_URL
+
+        command = [
+            executable,
+            f"--user-data-dir={user_data_dir}",
+            "--profile-directory=Default",
+            "--no-first-run",
+            "--disable-features=Translate",
+            "--start-minimized",
+            target_url,
+        ]
+
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+
+        try:
+            process.wait(timeout=max(3, wait_seconds))
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+        return {
+            "status": "refreshed",
+            "browser": browser_name,
+            "profile_path": str(profile_dir),
+            "opened_url": target_url,
+            "wait_seconds": wait_seconds,
+            "message": "Refreshed Douyin guest cookies in an app-managed browser profile.",
+        }
+
+    @staticmethod
     def douyin_session_status(browser: str = "edge") -> Dict[str, Any]:
         browser_name = (browser or settings.DOWNLOADER_SESSION_BROWSER or "edge").strip().lower()
         profile_dir = settings.downloader_session_profile_dir(browser_name)
@@ -443,12 +509,37 @@ class VideoDownloader:
 
     @staticmethod
     def cookie_diagnostics() -> Dict[str, Any]:
-        cookie_mode = (settings.DOWNLOADER_COOKIE_MODE or "none").strip().lower()
+        cookie_mode = (settings.DOWNLOADER_COOKIE_MODE or "auto").strip().lower()
         base = {
             "cookie_mode": cookie_mode,
         }
 
         try:
+            if cookie_mode == "auto":
+                browser = (settings.DOWNLOADER_SESSION_BROWSER or "chrome").strip().lower()
+                profile_dir = settings.downloader_session_profile_dir(browser)
+                if not profile_dir.exists() or not list(profile_dir.rglob("Cookies")):
+                    return {
+                        **base,
+                        "status": "missing_required_cookie",
+                        "source": "auto",
+                        "browser": browser,
+                        "profile": str(profile_dir),
+                        "has_s_v_web_id": False,
+                        "message": "Auto mode has not refreshed Douyin guest cookies yet.",
+                    }
+
+                cookie_jar = extract_cookies_from_browser(browser, str(profile_dir))
+                return VideoDownloader._summarize_cookie_jar(
+                    cookie_jar,
+                    "auto",
+                    {
+                        **base,
+                        "browser": browser,
+                        "profile": str(profile_dir),
+                    },
+                )
+
             if cookie_mode == "browser":
                 browser = (settings.DOWNLOADER_COOKIES_FROM_BROWSER or "chrome").strip().lower()
                 profile, profile_source = VideoDownloader._resolve_browser_profile(browser)
@@ -581,7 +672,11 @@ class VideoDownloader:
 
     @staticmethod
     def _apply_cookie_settings(ydl_opts: Dict[str, Any]) -> None:
-        cookie_mode = (settings.DOWNLOADER_COOKIE_MODE or "none").strip().lower()
+        cookie_mode = (settings.DOWNLOADER_COOKIE_MODE or "auto").strip().lower()
+
+        if cookie_mode == "auto":
+            print("yt-dlp auto mode: first attempt will run without cookies.")
+            return
 
         if cookie_mode == "browser":
             browser = (settings.DOWNLOADER_COOKIES_FROM_BROWSER or "").strip().lower()
@@ -631,6 +726,41 @@ class VideoDownloader:
 
             ydl_opts.setdefault("http_headers", {})["Cookie"] = cookie_header
             print("yt-dlp will use a manual Cookie header.")
+
+    @staticmethod
+    def _base_ydl_opts(output_dir: Path, custom_name: str) -> Dict[str, Any]:
+        return {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'outtmpl': str(output_dir / f"{custom_name}.%(ext)s"),
+            'merge_output_format': 'mp4',
+            'quiet': False,
+            'no_warnings': True,
+            # Workaround for TikTok/Douyin anti-scraping
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            }
+        }
+
+    @staticmethod
+    def _extract_with_options(url: str, output_dir: Path, custom_name: str, ydl_opts: Dict[str, Any]) -> Dict[str, Any]:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'Unknown Title')
+            duration = info.get('duration', 0)
+            downloaded_path = VideoDownloader._find_downloaded_video(output_dir, custom_name)
+
+            return {
+                "status": "success",
+                "title": title,
+                "duration": duration,
+                "width": info.get("width") or 0,
+                "height": info.get("height") or 0,
+                "video_path": str(downloaded_path),
+                "cached": False
+            }
     
     @staticmethod
     def download_video(url: str, output_dir: Path, custom_name: str = "original") -> Dict[str, Any]:
@@ -649,20 +779,8 @@ class VideoDownloader:
                 "cached": True
             }
 
-        ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': str(output_dir / f"{custom_name}.%(ext)s"),
-            'merge_output_format': 'mp4',
-            'quiet': False,
-            'no_warnings': True,
-            # Workaround for TikTok/Douyin anti-scraping
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
-            }
-        }
+        ydl_opts = VideoDownloader._base_ydl_opts(output_dir, custom_name)
+        cookie_mode = (settings.DOWNLOADER_COOKIE_MODE or "auto").strip().lower()
 
         try:
             VideoDownloader._apply_cookie_settings(ydl_opts)
@@ -673,23 +791,55 @@ class VideoDownloader:
             }
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                title = info.get('title', 'Unknown Title')
-                duration = info.get('duration', 0)
-                downloaded_path = VideoDownloader._find_downloaded_video(output_dir, custom_name)
-                
-                return {
-                    "status": "success",
-                    "title": title,
-                    "duration": duration,
-                    "width": info.get("width") or 0,
-                    "height": info.get("height") or 0,
-                    "video_path": str(downloaded_path),
-                    "cached": False
-                }
+            return VideoDownloader._extract_with_options(url, output_dir, custom_name, ydl_opts)
         except Exception as e:
             print(f"Download failed: {e}")
+            if cookie_mode == "auto" and VideoDownloader._is_cookie_error(e):
+                first_message = VideoDownloader._clean_error_message(e)
+                refresh_result = VideoDownloader.refresh_douyin_guest_cookies(url)
+                if refresh_result.get("status") == "refreshed":
+                    retry_opts = VideoDownloader._base_ydl_opts(output_dir, custom_name)
+                    retry_opts["cookiesfrombrowser"] = (
+                        refresh_result["browser"],
+                        refresh_result["profile_path"],
+                    )
+                    print(
+                        "yt-dlp auto mode retry with Douyin guest cookies from "
+                        f"{refresh_result['profile_path']}"
+                    )
+                    try:
+                        result = VideoDownloader._extract_with_options(
+                            url,
+                            output_dir,
+                            custom_name,
+                            retry_opts,
+                        )
+                        result["auto_cookie_refresh"] = True
+                        return result
+                    except Exception as retry_error:
+                        print(f"Auto cookie retry failed: {retry_error}")
+                        diagnostics = VideoDownloader.cookie_diagnostics()
+                        diagnostics_text = VideoDownloader.format_cookie_diagnostics(diagnostics)
+                        return {
+                            "status": "error",
+                            "message": (
+                                f"{VideoDownloader._clean_error_message(retry_error)}\n\n"
+                                "Auto mode first tried without cookies, then refreshed Douyin guest cookies "
+                                f"with {refresh_result.get('browser')} and retried.\n"
+                                f"First failure: {first_message}\n"
+                                f"Cookie diagnostics: {diagnostics_text}"
+                            )
+                        }
+
+                return {
+                    "status": "error",
+                    "message": (
+                        f"{first_message}\n\n"
+                        "Auto mode tried without cookies but Douyin asked for fresh guest cookies. "
+                        f"Automatic guest-cookie refresh failed: {refresh_result.get('message', 'unknown error')}"
+                    )
+                }
+
             message = VideoDownloader._clean_error_message(e)
             if VideoDownloader._is_cookie_error(e):
                 hint = (

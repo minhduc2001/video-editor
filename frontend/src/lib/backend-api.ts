@@ -39,7 +39,7 @@ export interface TelegramSettings {
 }
 
 export interface DownloaderSettings {
-  cookie_mode: 'none' | 'session' | 'browser' | 'file' | 'header'
+  cookie_mode: 'auto' | 'none' | 'session' | 'browser' | 'file' | 'header'
   cookies_from_browser: string
   browser_profile: string
   cookies_file: string

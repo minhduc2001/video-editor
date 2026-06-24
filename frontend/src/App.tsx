@@ -175,14 +175,14 @@ const defaultSttSettings: SttSettings = {
 };
 
 const defaultDownloaderSettings: DownloaderSettings = {
-  cookie_mode: 'none',
+  cookie_mode: 'auto',
   cookies_from_browser: 'chrome',
   browser_profile: '',
   cookies_file: '',
   cookie_header: '',
-  session_browser: 'edge',
+  session_browser: 'chrome',
   session_profile_path: '',
-  cookie_mode_options: ['none', 'session', 'browser', 'file', 'header'],
+  cookie_mode_options: ['auto', 'none', 'session', 'browser', 'file', 'header'],
   browser_options: ['edge', 'chrome', 'firefox', 'brave', 'chromium', 'opera', 'vivaldi'],
   session_browser_options: ['edge', 'chrome'],
 };
@@ -3850,6 +3850,7 @@ function App() {
                     }}
                     className="mt-2 w-full rounded border border-[#343434] bg-[#121212] px-3 py-2 text-xs normal-case text-gray-200 outline-none focus:border-blue-500"
                   >
+                    <option value="auto">Auto</option>
                     <option value="none">None</option>
                     <option value="session">Douyin session</option>
                     <option value="browser">Browser cookies</option>
@@ -4073,7 +4074,7 @@ function App() {
                 )}
 
                 <div className="rounded border border-[#343434] bg-[#151515] px-3 py-2 text-[11px] leading-relaxed text-gray-400">
-                  Browser cookies uses the Chrome/Edge profile where Douyin created guest cookies. Let Douyin fully load there, close all browser windows/background processes so cookies are not locked, then download again. Douyin Session is only a separate fallback profile.
+                  Auto tries without cookies first. If Douyin asks for fresh guest cookies, the backend refreshes an app-managed Chrome/Edge session and retries automatically. Browser cookies and Cookie Header are manual fallbacks.
                 </div>
               </>
             )}
