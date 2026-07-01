@@ -104,13 +104,9 @@ class Settings:
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 
-    # --- DOWNLOADER / YT-DLP ---
-    DOWNLOADER_COOKIE_MODE: str = os.getenv("DOWNLOADER_COOKIE_MODE", "auto")
-    DOWNLOADER_COOKIES_FROM_BROWSER: str = os.getenv("DOWNLOADER_COOKIES_FROM_BROWSER", "chrome")
-    DOWNLOADER_BROWSER_PROFILE: str = os.getenv("DOWNLOADER_BROWSER_PROFILE", "")
-    DOWNLOADER_COOKIES_FILE: str = os.getenv("DOWNLOADER_COOKIES_FILE", "")
-    DOWNLOADER_COOKIE_HEADER: str = os.getenv("DOWNLOADER_COOKIE_HEADER", "")
-    DOWNLOADER_SESSION_BROWSER: str = os.getenv("DOWNLOADER_SESSION_BROWSER", "chrome")
+    # --- DOWNLOADER API ---
+    # Self-hosted Douyin/TikTok downloader API base URL, configured from the UI.
+    DOWNLOADER_API_BASE_URL: str = os.getenv("DOWNLOADER_API_BASE_URL", "")
     
     # --- HARDWARE OPTIMIZATION ---
     # For low-end machines (máy yếu), we should aggressively clean up temp files
@@ -159,17 +155,10 @@ class Settings:
         self.TELEGRAM_ENABLED = coerce_bool(data.get("telegram_enabled"), self.TELEGRAM_ENABLED)
         self.TELEGRAM_BOT_TOKEN = str(data.get("telegram_bot_token", self.TELEGRAM_BOT_TOKEN))
         self.TELEGRAM_CHAT_ID = str(data.get("telegram_chat_id", self.TELEGRAM_CHAT_ID))
-        self.DOWNLOADER_COOKIE_MODE = str(data.get("downloader_cookie_mode", self.DOWNLOADER_COOKIE_MODE))
-        self.DOWNLOADER_COOKIES_FROM_BROWSER = str(
-            data.get("downloader_cookies_from_browser", self.DOWNLOADER_COOKIES_FROM_BROWSER)
-        )
-        self.DOWNLOADER_BROWSER_PROFILE = str(
-            data.get("downloader_browser_profile", self.DOWNLOADER_BROWSER_PROFILE)
-        )
-        self.DOWNLOADER_COOKIES_FILE = str(data.get("downloader_cookies_file", self.DOWNLOADER_COOKIES_FILE))
-        self.DOWNLOADER_COOKIE_HEADER = str(data.get("downloader_cookie_header", self.DOWNLOADER_COOKIE_HEADER))
-        self.DOWNLOADER_SESSION_BROWSER = str(
-            data.get("downloader_session_browser", self.DOWNLOADER_SESSION_BROWSER)
+        self.DOWNLOADER_API_BASE_URL = str(
+            data.get("downloader_api_base_url")
+            or data.get("downloader_api_url")
+            or self.DOWNLOADER_API_BASE_URL
         )
         self.WHISPER_MODEL_SIZE = str(data.get("whisper_model_size", self.WHISPER_MODEL_SIZE))
         self.WHISPER_COMPUTE_TYPE = str(data.get("whisper_compute_type", self.WHISPER_COMPUTE_TYPE))
@@ -216,16 +205,7 @@ class Settings:
 
     def get_downloader_settings(self) -> Dict[str, Any]:
         return {
-            "cookie_mode": self.DOWNLOADER_COOKIE_MODE,
-            "cookies_from_browser": self.DOWNLOADER_COOKIES_FROM_BROWSER,
-            "browser_profile": self.DOWNLOADER_BROWSER_PROFILE,
-            "cookies_file": self.DOWNLOADER_COOKIES_FILE,
-            "cookie_header": self.DOWNLOADER_COOKIE_HEADER,
-            "session_browser": self.DOWNLOADER_SESSION_BROWSER,
-            "session_profile_path": str(self.downloader_session_profile_dir(self.DOWNLOADER_SESSION_BROWSER)),
-            "cookie_mode_options": ["auto", "none", "session", "browser", "file", "header"],
-            "browser_options": ["edge", "chrome", "firefox", "brave", "chromium", "opera", "vivaldi"],
-            "session_browser_options": ["edge", "chrome"],
+            "api_base_url": self.DOWNLOADER_API_BASE_URL,
         }
 
     def get_stt_settings(self) -> Dict[str, Any]:
@@ -255,12 +235,7 @@ class Settings:
                     "telegram_enabled": self.TELEGRAM_ENABLED,
                     "telegram_bot_token": self.TELEGRAM_BOT_TOKEN,
                     "telegram_chat_id": self.TELEGRAM_CHAT_ID,
-                    "downloader_cookie_mode": self.DOWNLOADER_COOKIE_MODE,
-                    "downloader_cookies_from_browser": self.DOWNLOADER_COOKIES_FROM_BROWSER,
-                    "downloader_browser_profile": self.DOWNLOADER_BROWSER_PROFILE,
-                    "downloader_cookies_file": self.DOWNLOADER_COOKIES_FILE,
-                    "downloader_cookie_header": self.DOWNLOADER_COOKIE_HEADER,
-                    "downloader_session_browser": self.DOWNLOADER_SESSION_BROWSER,
+                    "downloader_api_base_url": self.DOWNLOADER_API_BASE_URL,
                     "whisper_model_size": self.WHISPER_MODEL_SIZE,
                     "whisper_compute_type": self.WHISPER_COMPUTE_TYPE,
                     "whisper_language_mode": self.WHISPER_LANGUAGE_MODE,
@@ -315,37 +290,12 @@ class Settings:
 
     def update_downloader_settings(
         self,
-        cookie_mode: str,
-        cookies_from_browser: str = "",
-        browser_profile: str = "",
-        cookies_file: str = "",
-        cookie_header: str = "",
-        session_browser: str = "",
+        api_base_url: str = "",
     ) -> Dict[str, Any]:
-        normalized_cookie_mode = cookie_mode.strip().lower() or "auto"
-        if normalized_cookie_mode not in {"auto", "none", "session", "browser", "file", "header"}:
-            raise ValueError(f"Unsupported downloader cookie mode: {cookie_mode}")
-
-        self.DOWNLOADER_COOKIE_MODE = normalized_cookie_mode
-        self.DOWNLOADER_COOKIES_FROM_BROWSER = cookies_from_browser.strip().lower()
-        self.DOWNLOADER_BROWSER_PROFILE = browser_profile.strip()
-        self.DOWNLOADER_COOKIES_FILE = cookies_file.strip()
-        self.DOWNLOADER_COOKIE_HEADER = cookie_header.strip()
-        self.DOWNLOADER_SESSION_BROWSER = (session_browser.strip().lower() or self.DOWNLOADER_SESSION_BROWSER or "edge")
+        self.DOWNLOADER_API_BASE_URL = api_base_url.strip().rstrip("/")
         self.save_user_settings()
 
         return self.get_downloader_settings()
-
-    def downloader_session_user_data_dir(self, browser: str = "") -> Path:
-        browser_name = (browser or self.DOWNLOADER_SESSION_BROWSER or "edge").strip().lower()
-        safe_browser_name = "".join(
-            char if char.isalnum() or char in ("-", "_") else "_"
-            for char in browser_name
-        ) or "edge"
-        return self.BROWSER_SESSIONS_DIR / f"douyin_{safe_browser_name}"
-
-    def downloader_session_profile_dir(self, browser: str = "") -> Path:
-        return self.downloader_session_user_data_dir(browser) / "Default"
 
     def update_stt_settings(
         self,

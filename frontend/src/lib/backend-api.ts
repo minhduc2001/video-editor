@@ -39,39 +39,7 @@ export interface TelegramSettings {
 }
 
 export interface DownloaderSettings {
-  cookie_mode: 'auto' | 'none' | 'session' | 'browser' | 'file' | 'header'
-  cookies_from_browser: string
-  browser_profile: string
-  cookies_file: string
-  cookie_header: string
-  session_browser: string
-  session_profile_path?: string
-  cookie_mode_options?: string[]
-  browser_options?: string[]
-  session_browser_options?: string[]
-}
-
-export interface BrowserProfileOption {
-  id: string
-  name: string
-  path: string
-  is_last_used?: boolean
-}
-
-export interface CookieDiagnostics {
-  status: string
-  source: string
-  cookie_mode: string
-  browser?: string
-  profile?: string
-  profile_source?: string
-  browser_running?: boolean
-  has_s_v_web_id?: boolean
-  useful_cookie_names?: string[]
-  douyin_cookie_name_count?: number
-  douyin_cookie_domains?: string[]
-  reason?: string
-  message?: string
+  api_base_url: string
 }
 
 export interface TelegramNotificationRequest {
@@ -330,79 +298,6 @@ export async function saveDownloaderSettings(settings: DownloaderSettings) {
   }
 
   return (await response.json()) as DownloaderSettings
-}
-
-export async function openDouyinSession(browser: string, url = '') {
-  const response = await fetch(`${API_BASE_URL}/api/downloader/douyin-session/open`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ browser, url }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
-  }
-
-  return (await response.json()) as {
-    status: 'opened'
-    browser: string
-    profile_path: string
-    opened_url: string
-    message: string
-  }
-}
-
-export async function openCookieBrowser(browser: string, url = '') {
-  const response = await fetch(`${API_BASE_URL}/api/downloader/browser/open`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ browser, url }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
-  }
-
-  return (await response.json()) as {
-    status: 'opened'
-    browser: string
-    opened_url: string
-    message: string
-  }
-}
-
-export async function getBrowserProfiles(browser: string) {
-  const response = await fetch(`${API_BASE_URL}/api/downloader/browser/profiles`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ browser }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
-  }
-
-  return (await response.json()) as {
-    browser: string
-    user_data_dir: string
-    profiles: BrowserProfileOption[]
-  }
-}
-
-export async function getCookieDiagnostics() {
-  const response = await fetch(`${API_BASE_URL}/api/downloader/cookies/diagnostics`)
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
-  }
-
-  return (await response.json()) as CookieDiagnostics
 }
 
 export async function sendTelegramNotification(request: TelegramNotificationRequest) {

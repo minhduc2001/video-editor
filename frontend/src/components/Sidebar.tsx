@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FormEvent, useRef, useState } from 'react';
-import { Film, Music, Type, Sparkles, FolderDown, Download, SpellCheck, FileText, Link, Loader2, Wand2 } from 'lucide-react';
+import { Copy, Film, Music, Type, Sparkles, FolderDown, Download, SpellCheck, FileText, Link, Loader2, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
 import { formatDuration, formatFileSize } from '@/lib/media';
 import { TTS_VOICE_GROUPS } from '@/lib/tts-voices';
 import type { AllInOneAutomationOptions, AllInOneAutomationResult, ImportedVideo } from '@/types/media';
@@ -20,6 +20,7 @@ interface SidebarProps {
   allInOneResults: AllInOneAutomationResult[]
   onImportVideos: (files: FileList) => void
   onImportVideoLink: (url: string) => void
+  onDeleteVideo: (videoId: string) => void
   onRunAllInOne: (options: AllInOneAutomationOptions) => void
   onSelectVideo: (videoId: string) => void
   onAddVideoToTimeline: (videoId: string) => void
@@ -46,6 +47,7 @@ export const Sidebar = ({
   allInOneResults,
   onImportVideos,
   onImportVideoLink,
+  onDeleteVideo,
   onRunAllInOne,
   onSelectVideo,
   onAddVideoToTimeline,
@@ -57,7 +59,10 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState('media');
   const [videoLink, setVideoLink] = useState('');
+  const [linkDetectMessage, setLinkDetectMessage] = useState('');
+  const [errorCopyStatus, setErrorCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
   const [allInOneLinks, setAllInOneLinks] = useState('');
+  const [allInOneDetectMessage, setAllInOneDetectMessage] = useState('');
   const [allInOneVoice, setAllInOneVoice] = useState('vi-VN-HoaiMyNeural');
   const [allInOneTranslate, setAllInOneTranslate] = useState(true);
   const [allInOneVoiceEnabled, setAllInOneVoiceEnabled] = useState(true);
@@ -68,6 +73,37 @@ export const Sidebar = ({
   const subtitleInputRef = useRef<HTMLInputElement>(null);
   const isCaptionBusy = captionStatus === 'uploading' || captionStatus === 'transcribing';
   const isAllInOneRunning = allInOneStatus === 'running';
+
+  const extractVideoUrls = (text: string) => {
+    const normalizedText = text
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/[，。！？、；：]/g, ' ');
+    const matches = normalizedText.match(/https?:\/\/[^\s"'<>]+/gi) ?? [];
+    const urls = matches
+      .map((url) => url.replace(/[)\]}.,;!?，。！？、；：]+$/g, ''))
+      .filter((url) => /douyin\.com|tiktok\.com/i.test(url));
+
+    return Array.from(new Set(urls));
+  };
+
+  const extractVideoUrl = (text: string) => {
+    const [firstUrl] = extractVideoUrls(text);
+
+    return firstUrl ?? '';
+  };
+
+  const detectVideoLink = () => {
+    const detectedUrl = extractVideoUrl(videoLink);
+
+    if (!detectedUrl) {
+      setLinkDetectMessage('No TikTok/Douyin URL found in the pasted text.');
+      return '';
+    }
+
+    setVideoLink(detectedUrl);
+    setLinkDetectMessage('Detected link from pasted text.');
+    return detectedUrl;
+  };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files?.length) {
@@ -92,7 +128,51 @@ export const Sidebar = ({
       return;
     }
 
-    onImportVideoLink(videoLink);
+    const detectedUrl = extractVideoUrl(videoLink);
+    if (detectedUrl && detectedUrl !== videoLink.trim()) {
+      setVideoLink(detectedUrl);
+      setLinkDetectMessage('Detected link from pasted text.');
+    }
+
+    onImportVideoLink(detectedUrl || videoLink);
+  };
+
+  const handleRetryVideoLink = () => {
+    if (linkImportStatus === 'downloading') {
+      return;
+    }
+
+    const detectedUrl = extractVideoUrl(videoLink);
+    if (detectedUrl && detectedUrl !== videoLink.trim()) {
+      setVideoLink(detectedUrl);
+      setLinkDetectMessage('Detected link from pasted text.');
+    }
+
+    onImportVideoLink(detectedUrl || videoLink);
+  };
+
+  const handleCopyLinkError = async () => {
+    if (!linkImportError) {
+      return;
+    }
+
+    const debugText = [
+      'DOWNLOAD_LINK_ERROR',
+      `time=${new Date().toISOString()}`,
+      `input=${videoLink}`,
+      `detected_url=${extractVideoUrl(videoLink) || '-'}`,
+      '',
+      linkImportError,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(debugText);
+      setErrorCopyStatus('copied');
+      window.setTimeout(() => setErrorCopyStatus('idle'), 1600);
+    } catch {
+      setErrorCopyStatus('error');
+      window.setTimeout(() => setErrorCopyStatus('idle'), 1600);
+    }
   };
 
   const handleAllInOneSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -102,17 +182,39 @@ export const Sidebar = ({
       return;
     }
 
-    onRunAllInOne({
-      urls: allInOneLinks
+    const detectedUrls = extractVideoUrls(allInOneLinks);
+    const urls = detectedUrls.length > 0
+      ? detectedUrls
+      : allInOneLinks
         .split(/\r?\n/)
         .map((url) => url.trim())
-        .filter(Boolean),
+        .filter(Boolean);
+
+    if (detectedUrls.length > 0) {
+      setAllInOneLinks(detectedUrls.join('\n'));
+      setAllInOneDetectMessage(`Detected ${detectedUrls.length} link${detectedUrls.length === 1 ? '' : 's'}.`);
+    }
+
+    onRunAllInOne({
+      urls,
       voice: allInOneVoice,
       translateToVietnamese: allInOneTranslate,
       includeVietnameseVoice: allInOneVoiceEnabled,
       burnSubtitles: allInOneBurnSubtitles,
       duckOriginalAudioAll: allInOneDuckAudio,
     });
+  };
+
+  const handleDetectAllInOneLinks = () => {
+    const detectedUrls = extractVideoUrls(allInOneLinks);
+
+    if (detectedUrls.length === 0) {
+      setAllInOneDetectMessage('No TikTok/Douyin URLs found.');
+      return;
+    }
+
+    setAllInOneLinks(detectedUrls.join('\n'));
+    setAllInOneDetectMessage(`Detected ${detectedUrls.length} link${detectedUrls.length === 1 ? '' : 's'}.`);
   };
 
   return (
@@ -171,25 +273,75 @@ export const Sidebar = ({
                     Link video
                   </div>
                   <div className="flex gap-2">
-                    <input
+                    <textarea
                       value={videoLink}
-                      onChange={(event) => setVideoLink(event.target.value)}
-                      placeholder="https://www.douyin.com/..."
-                      className="min-w-0 flex-1 rounded border border-[#343434] bg-[#181818] px-2 py-1.5 text-[11px] text-gray-200 outline-none placeholder:text-gray-600 focus:border-blue-500"
+                      onChange={(event) => {
+                        setVideoLink(event.target.value);
+                        setLinkDetectMessage('');
+                        setErrorCopyStatus('idle');
+                      }}
+                      placeholder="Paste TikTok/Douyin URL or full shared text"
+                      rows={2}
+                      className="min-w-0 flex-1 resize-none rounded border border-[#343434] bg-[#181818] px-2 py-1.5 text-[11px] leading-relaxed text-gray-200 outline-none placeholder:text-gray-600 focus:border-blue-500"
                     />
-                    <button
-                      type="submit"
-                      disabled={linkImportStatus === 'downloading'}
-                      className="shrink-0 rounded bg-blue-600 px-2.5 py-1.5 text-[11px] text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {linkImportStatus === 'downloading' ? 'Loading' : 'Download'}
-                    </button>
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <button
+                        type="button"
+                        disabled={linkImportStatus === 'downloading'}
+                        onClick={detectVideoLink}
+                        className="flex items-center justify-center gap-1 rounded border border-[#343434] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-gray-200 hover:bg-[#2d2d2d] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Search size={12} />
+                        Detect
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={linkImportStatus === 'downloading'}
+                        className="flex items-center justify-center gap-1 rounded bg-blue-600 px-2 py-1.5 text-[11px] text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {linkImportStatus === 'downloading' ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Download size={12} />
+                        )}
+                        {linkImportStatus === 'downloading' ? 'Loading' : 'Download'}
+                      </button>
+                    </div>
                   </div>
+                  {linkDetectMessage && (
+                    <div className="text-[10px] leading-relaxed text-gray-500">{linkDetectMessage}</div>
+                  )}
                   {linkImportStatus === 'ready' && (
                     <div className="text-[11px] text-emerald-400">Video imported from link.</div>
                   )}
                   {linkImportStatus === 'error' && (
-                    <div className="whitespace-pre-line text-[11px] text-red-400 leading-relaxed">{linkImportError ?? 'Download failed'}</div>
+                    <div className="space-y-2 rounded border border-red-500/25 bg-red-500/10 p-2">
+                      <div className="whitespace-pre-line text-[11px] leading-relaxed text-red-300">
+                        {linkImportError ?? 'Download failed'}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleRetryVideoLink}
+                          className="flex items-center gap-1 rounded border border-red-400/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-100 hover:bg-red-500/20"
+                        >
+                          <RotateCcw size={11} />
+                          Retry
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCopyLinkError}
+                          className="flex items-center gap-1 rounded border border-[#3d3d3d] bg-[#1e1e1e] px-2 py-1 text-[10px] text-gray-200 hover:bg-[#2d2d2d]"
+                        >
+                          <Copy size={11} />
+                          {errorCopyStatus === 'copied'
+                            ? 'Copied'
+                            : errorCopyStatus === 'error'
+                              ? 'Copy failed'
+                              : 'Copy error'}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </form>
                 <div className="flex space-x-2">
@@ -213,9 +365,10 @@ export const Sidebar = ({
                 {videos.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3 mt-1">
                     {videos.map((video) => (
-                      <button
+                      <div
                         key={video.id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         draggable
                         onDragStart={(event) => {
                           event.dataTransfer.setData('application/x-video-id', video.id);
@@ -224,7 +377,13 @@ export const Sidebar = ({
                         }}
                         onClick={() => onSelectVideo(video.id)}
                         onDoubleClick={() => onAddVideoToTimeline(video.id)}
-                        className={`bg-[#121212] rounded-md overflow-hidden relative cursor-pointer border-2 text-left hover:border-blue-500 transition-all shadow-md ${
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            onSelectVideo(video.id);
+                          }
+                        }}
+                        className={`group bg-[#121212] rounded-md overflow-hidden relative cursor-pointer border-2 text-left hover:border-blue-500 transition-all shadow-md ${
                           activeVideoId === video.id ? 'border-blue-500' : 'border-transparent'
                         }`}
                       >
@@ -243,12 +402,23 @@ export const Sidebar = ({
                         <span className="absolute top-1.5 right-1.5 text-[9px] text-white bg-black/60 px-1 rounded shadow">
                           {formatDuration(video.duration)}
                         </span>
+                        <button
+                          type="button"
+                          title="Delete media"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteVideo(video.id);
+                          }}
+                          className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded bg-black/70 text-red-200 opacity-0 shadow hover:bg-red-600 hover:text-white group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                         {timelineVideoIds.has(video.id) && (
                           <span className="absolute bottom-1.5 right-1.5 text-[9px] text-blue-100 bg-blue-600/80 px-1 rounded shadow">
                             Timeline
                           </span>
                         )}
-                      </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -400,15 +570,34 @@ export const Sidebar = ({
             <div className="space-y-4">
               <div className="text-xs text-gray-400 uppercase font-semibold">All in one</div>
               <label className="block space-y-1.5">
-                <span className="text-[11px] text-gray-400">Video links</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-gray-400">Video links</span>
+                  <button
+                    type="button"
+                    disabled={isAllInOneRunning}
+                    onClick={handleDetectAllInOneLinks}
+                    className="flex items-center gap-1 rounded border border-[#343434] bg-[#1e1e1e] px-2 py-1 text-[10px] text-gray-200 hover:bg-[#2d2d2d] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Search size={11} />
+                    Detect links
+                  </button>
+                </div>
                 <textarea
                   value={allInOneLinks}
-                  onChange={(event) => setAllInOneLinks(event.target.value)}
+                  onChange={(event) => {
+                    setAllInOneLinks(event.target.value);
+                    setAllInOneDetectMessage('');
+                  }}
                   disabled={isAllInOneRunning}
-                  placeholder={'Mỗi link một dòng\nhttps://www.douyin.com/...\nhttps://www.douyin.com/...'}
+                  placeholder={'One link per line\nhttps://www.douyin.com/...\nhttps://www.tiktok.com/...'}
                   rows={5}
                   className="w-full resize-none rounded border border-[#343434] bg-[#181818] px-2 py-2 text-[11px] text-gray-200 outline-none placeholder:text-gray-600 focus:border-blue-500 disabled:opacity-50"
                 />
+                {allInOneDetectMessage && (
+                  <span className="block text-[10px] leading-relaxed text-gray-500">
+                    {allInOneDetectMessage}
+                  </span>
+                )}
               </label>
 
               <label className="block space-y-1.5">

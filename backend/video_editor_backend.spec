@@ -47,7 +47,6 @@ for package in [
     "edge_tts",
     "vieneu",
     "sea_g2p",
-    "yt_dlp",
 ]:
     hiddenimports += collect_submodules(package)
 

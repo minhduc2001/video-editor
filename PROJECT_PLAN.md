@@ -27,7 +27,7 @@ Dự án này được định vị là một **Sản phẩm thương mại (Com
    - Đóng vai trò là Editor UI. Render Canvas siêu mượt, quản lý State phức tạp bằng `Zustand` hoặc `Redux` cho Timeline.
 2. **Backend (Python + FastAPI)**:
    - Thư mục: `backend/`
-   - Cung cấp API nội bộ cho UI. Gánh toàn bộ thuật toán xử lý: Tải (`yt-dlp`), Tách beat (`demucs`), Trích xuất Text (`faster-whisper`), TTS (`Edge-TTS/ElevenLabs`), Tẩy xóa & Render Render (`OpenCV/FFmpeg`).
+   - Cung cấp API nội bộ cho UI. Gánh toàn bộ thuật toán xử lý: Tải qua downloader API riêng, Tách beat (`demucs`), Trích xuất Text (`faster-whisper`), TTS (`Edge-TTS/ElevenLabs`), Tẩy xóa & Render Render (`OpenCV/FFmpeg`).
 3. **Local Database**: Dùng `SQLite` tích hợp thẳng vào app để lưu trạng thái các Project và Cấu hình người dùng.
 
 ---
