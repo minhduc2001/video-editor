@@ -455,3 +455,12 @@ export async function exportTimelineVideo(request: ExportTimelineRequest) {
     download_url: toBackendUrl(data.output_url),
   }
 }
+
+export async function getSystemLogs(lines: number = 500): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/system/logs?lines=${lines}`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch system logs')
+  }
+  const data = await response.json()
+  return data.logs
+}

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,9 +6,15 @@ import uvicorn
 from pathlib import Path
 
 from core.config import settings
-from api.routes import video_flow, editor_api
+from core.logger import logger
+from api.routes import video_flow, editor_api, system
 
 app = FastAPI(title="Video Dubbing Backend API")
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting Video Dubbing Backend API...")
+
 
 # Setup CORS to allow requests from the Tauri frontend
 app.add_middleware(
@@ -26,6 +33,7 @@ app.mount("/output", StaticFiles(directory=str(output_path)), name="output")
 # Include Routers
 app.include_router(editor_api.router, prefix="/api", tags=["editor"])
 app.include_router(video_flow.router, prefix="/api/auto", tags=["auto-pipeline"])
+app.include_router(system.router, prefix="/api/system", tags=["system"])
 
 @app.get("/")
 def read_root():

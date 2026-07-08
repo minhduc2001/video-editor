@@ -35,6 +35,7 @@ import {
   type TelegramSettings,
   type DownloaderSettings,
   type DubbingSegmentPayload,
+  getSystemLogs,
 } from './lib/backend-api';
 import { parseSrtFileText, type ParsedSrtCue } from './lib/srt';
 import {
@@ -466,12 +467,15 @@ function App() {
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [appVersion, setAppVersion] = useState(__APP_VERSION__);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
   const [settingsStatus, setSettingsStatus] = useState<SettingsStatus>('idle');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('translation');
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [systemLogs, setSystemLogs] = useState<string>('');
+  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [translationSettings, setTranslationSettings] = useState<TranslationSettings>(defaultTranslationSettings);
   const [translationSettingsDraft, setTranslationSettingsDraft] =
     useState<TranslationSettings>(defaultTranslationSettings);
@@ -1066,6 +1070,24 @@ function App() {
       setTranslationModelsError(error instanceof Error ? error.message : 'Could not load models.');
     }
   };
+
+  const handleFetchSystemLogs = async () => {
+    setIsFetchingLogs(true);
+    try {
+      const logs = await getSystemLogs(500);
+      setSystemLogs(logs);
+    } catch (e) {
+      setSystemLogs(`Error fetching logs: ${e}`);
+    } finally {
+      setIsFetchingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isLogsOpen) {
+      void handleFetchSystemLogs();
+    }
+  }, [isLogsOpen]);
 
   const handleSaveTranslationSettings = async () => {
     setSettingsStatus('saving');
@@ -3031,8 +3053,13 @@ function App() {
     const subtitleEntries = buildSubtitleEntries();
 
     if (subtitleEntries.length === 0) {
+      setProjectError('Hiện tại chưa có phụ đề (subtitle) nào trên Timeline để xuất.');
+      // Keep it backwards compatible with the export panel if it's open
       setExportStatus('error');
-      setExportError('No text or captions to export.');
+      setExportError('Hiện tại chưa có phụ đề (subtitle) nào trên Timeline để xuất.');
+      
+      // Auto-clear error after 3 seconds
+      setTimeout(() => setProjectError(null), 3000);
       return;
     }
 
@@ -3906,6 +3933,41 @@ function App() {
     </div>
   ) : null;
 
+  const logsModal = isLogsOpen ? (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 px-4">
+      <div className="max-h-[90vh] w-full max-w-[800px] overflow-hidden rounded-xl border border-border/50 glass-card shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between border-b border-border/30 px-4 py-3 bg-muted/20 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+             <span className="text-sm font-semibold text-foreground">System Logs</span>
+             {isFetchingLogs && <span className="text-[10px] text-primary">Refreshing...</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleFetchSystemLogs()}
+              disabled={isFetchingLogs}
+              className="rounded bg-primary/20 px-3 py-1 text-xs text-primary hover:bg-primary/30 disabled:opacity-50 transition-colors"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsLogsOpen(false)}
+              className="rounded p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="h-[600px] max-h-[70vh] overflow-auto p-4 bg-[#050505]">
+          <pre className="text-[11px] font-mono text-green-400/90 leading-relaxed whitespace-pre-wrap">
+            {systemLogs || 'No logs available or backend not running...'}
+          </pre>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (!isProjectReady) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#181818] text-gray-200 font-sans">
@@ -3995,18 +4057,18 @@ function App() {
 
   return (
     <div 
-      className="flex flex-col h-screen w-screen bg-[#181818] text-gray-200 overflow-hidden font-sans"
+      className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden font-sans"
     >
       {projectFileInput}
       {settingsModal}
       {/* Top Menu Bar */}
-      <div className="h-10 bg-[#121212] border-b border-[#000] flex items-center px-4 justify-between">
+      <div className="h-12 glass-panel z-10 flex items-center px-4 justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <span className="font-bold text-white tracking-wide text-sm">AI VIDEO EDITOR PRO</span>
-          <span className="max-w-[260px] truncate text-[10px] text-gray-300 bg-[#1e1e1e] px-2 py-0.5 rounded">
+          <span className="font-bold text-gradient tracking-wider text-sm flex items-center gap-2"><span className="text-lg">🎬</span> AI VIDEO EDITOR PRO</span>
+          <span className="max-w-[260px] truncate text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border border-white/5">
             {project.name}
           </span>
-          <span className="text-[10px] text-gray-500 bg-[#1e1e1e] px-2 py-0.5 rounded">
+          <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border border-white/5">
             {projectStatus}
           </span>
         </div>
@@ -4015,7 +4077,7 @@ function App() {
           <button
             type="button"
             onClick={handleCreateProject}
-            className="flex items-center gap-1.5 rounded border border-[#343434] bg-[#1e1e1e] px-3 py-1.5 text-xs text-gray-200 hover:bg-[#2d2d2d]"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-card/50 px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors hover-lift"
           >
             <FilePlus2 size={13} />
             New
@@ -4023,15 +4085,23 @@ function App() {
           <button
             type="button"
             onClick={() => projectInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded border border-[#343434] bg-[#1e1e1e] px-3 py-1.5 text-xs text-gray-200 hover:bg-[#2d2d2d]"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-card/50 px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors hover-lift"
           >
             <FolderOpen size={13} />
             Open
           </button>
           <button
             type="button"
+            onClick={() => setIsLogsOpen(true)}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-card/50 px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors hover-lift"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Logs
+          </button>
+          <button
+            type="button"
             onClick={handleOpenSettings}
-            className="flex items-center gap-1.5 rounded border border-[#343434] bg-[#1e1e1e] px-3 py-1.5 text-xs text-gray-200 hover:bg-[#2d2d2d]"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-card/50 px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors hover-lift"
           >
             <SettingsIcon size={13} />
             Settings
@@ -4040,10 +4110,19 @@ function App() {
             type="button"
             disabled={isSavingProject}
             onClick={handleSaveProject}
-            className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md bg-secondary/80 px-3 py-1.5 text-xs text-secondary-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50 transition-colors hover-lift"
           >
             <Save size={13} />
             {isSavingProject ? 'Saving' : 'Save'}
+          </button>
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={handleExportSubtitles}
+            className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 transition-colors hover-lift font-medium"
+          >
+            <FileText size={13} />
+            Export SRT
           </button>
           <button
             type="button"
@@ -4051,9 +4130,9 @@ function App() {
               setIsExportPanelOpen(true);
               setExportError(null);
             }}
-            className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-1.5 rounded"
+            className="bg-gradient-primary text-xs px-5 py-1.5 rounded-md font-medium hover-lift transition-all"
           >
-            Export
+            Export Video
           </button>
         </div>
       </div>
@@ -4100,7 +4179,7 @@ function App() {
         </div>
 
         <div
-          className="w-1.5 shrink-0 cursor-col-resize bg-[#060606] transition-colors hover:bg-blue-500/70"
+          className="w-1 shrink-0 cursor-col-resize bg-border/40 transition-colors hover:bg-primary z-20"
           onPointerDown={(event) => startPaneResize(event, 'sidebar')}
         />
 
@@ -4131,7 +4210,7 @@ function App() {
         />
 
         <div
-          className="w-1.5 shrink-0 cursor-col-resize bg-[#060606] transition-colors hover:bg-blue-500/70"
+          className="w-1 shrink-0 cursor-col-resize bg-border/40 transition-colors hover:bg-primary z-20"
           onPointerDown={(event) => startPaneResize(event, 'properties')}
         />
 
@@ -4157,7 +4236,7 @@ function App() {
       </div>
 
       <div
-        className="h-1.5 shrink-0 cursor-row-resize bg-[#060606] transition-colors hover:bg-blue-500/70"
+        className="h-1 shrink-0 cursor-row-resize bg-border/40 transition-colors hover:bg-primary z-20 relative"
         onPointerDown={(event) => startPaneResize(event, 'timeline')}
       />
 
@@ -4215,19 +4294,19 @@ function App() {
       </div>
 
       {isExportPanelOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-[440px] rounded-md border border-[#343434] bg-[#1e1e1e] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#2d2d2d] px-4 py-3">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-background/80 backdrop-blur-sm px-4">
+          <div className="w-full max-w-[440px] rounded-xl border border-border bg-card shadow-2xl glass-card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border/50 bg-muted/20 px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-white">Export</div>
-                <div className="mt-1 text-[11px] text-gray-500">
+                <div className="text-sm font-semibold text-foreground">Export Media</div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
                   {timelineClips.length} clips - {formatDuration(timelineDuration)}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsExportPanelOpen(false)}
-                className="rounded p-1.5 text-gray-400 hover:bg-[#2d2d2d] hover:text-white"
+                className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                 aria-label="Close export"
               >
                 <X size={16} />
@@ -4322,6 +4401,8 @@ function App() {
           </div>
         </div>
       )}
+      {settingsModal}
+      {logsModal}
     </div>
   );
 }

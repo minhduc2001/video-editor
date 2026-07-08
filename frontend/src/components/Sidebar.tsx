@@ -218,43 +218,43 @@ export const Sidebar = ({
   };
 
   return (
-    <div className="w-full min-w-0 h-full bg-[#1e1e1e] border-r border-[#000] flex flex-col shadow-xl z-10">
+    <div className="w-full min-w-0 h-full glass-card border-r border-border/50 flex flex-col shadow-xl z-10">
       {/* Top Tabs */}
-      <div className="flex h-14 bg-[#181818] border-b border-[#000] items-center px-2 space-x-1">
+      <div className="flex h-16 bg-muted/20 border-b border-border/40 items-center px-2 gap-1 overflow-x-auto shrink-0">
         <button 
           onClick={() => setActiveTab('media')}
-          className={`flex flex-col items-center justify-center p-2 w-16 rounded transition-colors ${activeTab === 'media' ? 'text-blue-400 bg-[#2d2d2d]' : 'text-gray-400 hover:text-gray-200 hover:bg-[#2d2d2d]'}`}
+          className={`flex flex-col items-center justify-center p-2 min-w-[64px] rounded-xl transition-all duration-200 hover-lift ${activeTab === 'media' ? 'text-primary bg-primary/10 shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
         >
           <Film size={20} />
-          <span className="text-[10px] mt-1">Media</span>
+          <span className="text-[10px] mt-1.5 font-medium">Media</span>
         </button>
         <button 
           onClick={() => setActiveTab('audio')}
-          className={`flex flex-col items-center justify-center p-2 w-16 rounded transition-colors ${activeTab === 'audio' ? 'text-blue-400 bg-[#2d2d2d]' : 'text-gray-400 hover:text-gray-200 hover:bg-[#2d2d2d]'}`}
+          className={`flex flex-col items-center justify-center p-2 min-w-[64px] rounded-xl transition-all duration-200 hover-lift ${activeTab === 'audio' ? 'text-primary bg-primary/10 shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
         >
           <Music size={20} />
-          <span className="text-[10px] mt-1">Audio</span>
+          <span className="text-[10px] mt-1.5 font-medium">Audio</span>
         </button>
         <button 
           onClick={() => setActiveTab('text')}
-          className={`flex flex-col items-center justify-center p-2 w-16 rounded transition-colors ${activeTab === 'text' ? 'text-blue-400 bg-[#2d2d2d]' : 'text-gray-400 hover:text-gray-200 hover:bg-[#2d2d2d]'}`}
+          className={`flex flex-col items-center justify-center p-2 min-w-[64px] rounded-xl transition-all duration-200 hover-lift ${activeTab === 'text' ? 'text-primary bg-primary/10 shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
         >
           <Type size={20} />
-          <span className="text-[10px] mt-1">Text</span>
+          <span className="text-[10px] mt-1.5 font-medium">Text</span>
         </button>
         <button 
           onClick={() => setActiveTab('auto')}
-          className={`flex flex-col items-center justify-center p-2 w-16 rounded transition-colors ${activeTab === 'auto' ? 'text-blue-400 bg-[#2d2d2d]' : 'text-gray-400 hover:text-gray-200 hover:bg-[#2d2d2d]'}`}
+          className={`flex flex-col items-center justify-center p-2 min-w-[64px] rounded-xl transition-all duration-200 hover-lift ${activeTab === 'auto' ? 'text-primary bg-primary/10 shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
         >
           <Wand2 size={20} />
-          <span className="text-[10px] mt-1">Auto</span>
+          <span className="text-[10px] mt-1.5 font-medium">Auto</span>
         </button>
         <button 
           onClick={() => setActiveTab('effects')}
-          className={`flex flex-col items-center justify-center p-2 w-16 rounded transition-colors ${activeTab === 'effects' ? 'text-blue-400 bg-[#2d2d2d]' : 'text-gray-400 hover:text-gray-200 hover:bg-[#2d2d2d]'}`}
+          className={`flex flex-col items-center justify-center p-2 min-w-[64px] rounded-xl transition-all duration-200 hover-lift ${activeTab === 'effects' ? 'text-primary bg-primary/10 shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
         >
           <Sparkles size={20} />
-          <span className="text-[10px] mt-1">Effects</span>
+          <span className="text-[10px] mt-1.5 font-medium">Effects</span>
         </button>
       </div>
 
@@ -262,13 +262,13 @@ export const Sidebar = ({
       <div className="flex-1 flex overflow-hidden">
         {activeTab === 'media' && (
           <>
-            <div className="w-20 bg-[#1e1e1e] border-r border-[#2d2d2d] py-2 flex flex-col gap-1">
-                <button className="text-[11px] text-blue-400 font-medium px-4 py-1.5 text-left bg-[#2d2d2d]/50">Local</button>
-                <button className="text-[11px] text-gray-400 hover:text-gray-200 px-4 py-1.5 text-left">Library</button>
+            <div className="w-20 bg-muted/10 border-r border-border/30 py-2 flex flex-col gap-1">
+                <button className="text-[11px] text-primary font-medium px-4 py-2 text-left bg-primary/5 border-l-2 border-primary">Local</button>
+                <button className="text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/40 px-4 py-2 text-left transition-colors">Library</button>
             </div>
             <div className="flex-1 p-3 flex flex-col gap-4 overflow-y-auto">
-                <form className="space-y-2 rounded border border-[#2d2d2d] bg-[#121212] p-2" onSubmit={handleVideoLinkSubmit}>
-                  <div className="flex items-center gap-1.5 text-[10px] uppercase text-gray-500">
+                <form className="space-y-3 rounded-xl border border-border/50 bg-card/40 p-3 shadow-sm backdrop-blur-sm" onSubmit={handleVideoLinkSubmit}>
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
                     <Link size={12} />
                     Link video
                   </div>
@@ -280,16 +280,16 @@ export const Sidebar = ({
                         setLinkDetectMessage('');
                         setErrorCopyStatus('idle');
                       }}
-                      placeholder="Paste TikTok/Douyin URL or full shared text"
+                      placeholder="Paste TikTok/Douyin URL..."
                       rows={2}
-                      className="min-w-0 flex-1 resize-none rounded border border-[#343434] bg-[#181818] px-2 py-1.5 text-[11px] leading-relaxed text-gray-200 outline-none placeholder:text-gray-600 focus:border-blue-500"
+                      className="min-w-0 flex-1 resize-none rounded-lg border border-input bg-background/50 px-2 py-2 text-[11px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary transition-all"
                     />
-                    <div className="flex shrink-0 flex-col gap-1">
+                    <div className="flex shrink-0 flex-col gap-1.5">
                       <button
                         type="button"
                         disabled={linkImportStatus === 'downloading'}
                         onClick={detectVideoLink}
-                        className="flex items-center justify-center gap-1 rounded border border-[#343434] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-gray-200 hover:bg-[#2d2d2d] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary/80 px-2.5 py-1 text-[11px] hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
                       >
                         <Search size={12} />
                         Detect
@@ -297,7 +297,7 @@ export const Sidebar = ({
                       <button
                         type="submit"
                         disabled={linkImportStatus === 'downloading'}
-                        className="flex items-center justify-center gap-1 rounded bg-blue-600 px-2 py-1.5 text-[11px] text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-primary px-2.5 py-1 text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {linkImportStatus === 'downloading' ? (
                           <Loader2 size={12} className="animate-spin" />

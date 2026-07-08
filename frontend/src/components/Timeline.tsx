@@ -55,7 +55,7 @@ const TOOL_BUTTON_CLASS =
 const ACTIVE_TOOL_BUTTON_CLASS =
   'inline-flex h-7 w-7 items-center justify-center rounded-md border border-blue-400/35 bg-blue-500/15 text-blue-300 shadow-[0_0_0_1px_rgba(96,165,250,0.12)]';
 const TRACK_LABEL_CLASS =
-  'sticky left-0 z-30 flex shrink-0 border-r border-white/10 bg-[#171717]/95 px-2 shadow-[6px_0_14px_rgba(0,0,0,0.22)] backdrop-blur';
+  'sticky left-0 z-30 flex shrink-0 border-r border-border/40 bg-card/95 px-2 shadow-[6px_0_14px_rgba(0,0,0,0.15)] backdrop-blur-md';
 
 const clampZoomLevel = (zoom: number) =>
   Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, Math.round(zoom)));
@@ -902,7 +902,7 @@ export const Timeline = ({
   };
 
   return (
-    <div className="h-full min-h-0 bg-[#151515] border-t border-black flex flex-col relative text-gray-200">
+    <div className="h-full min-h-0 bg-background/50 backdrop-blur-sm border-t border-border/50 flex flex-col relative text-foreground">
       {/* Timeline Toolbar */}
       <div className="h-11 bg-[#202020] flex items-center px-4 justify-between border-b border-black/80 shadow-[0_6px_18px_rgba(0,0,0,0.22)] z-10">
         <div className="flex items-center gap-1">
@@ -964,7 +964,7 @@ export const Timeline = ({
       {/* Scrollable Tracks Area */}
       <div 
         ref={containerRef}
-        className="flex-1 overflow-y-auto overflow-x-auto bg-[#151515] flex flex-col relative scroll-smooth"
+        className="flex-1 overflow-y-auto overflow-x-auto bg-transparent flex flex-col relative scroll-smooth"
       >
         {/* Dynamic Width Container based on Zoom */}
         <div
@@ -978,7 +978,7 @@ export const Timeline = ({
         >
           
           {/* Time Ruler inside scroll area so it scrolls with tracks */}
-          <div className="h-7 bg-[#181818]/95 border-b border-white/10 relative pl-[100px] sticky top-0 z-20 backdrop-blur">
+          <div className="h-7 bg-card/90 border-b border-border/30 relative pl-[100px] sticky top-0 z-20 backdrop-blur-md">
              {rulerMarks.map((mark) => (
                <div
                  key={`${mark.time}-${mark.isMajor ? 'major' : 'minor'}`}
@@ -1017,7 +1017,7 @@ export const Timeline = ({
                   <span className="text-[10px] font-medium text-gray-400">Text/Sub</span>
                </div>
                <div
-                 className="flex-1 relative cursor-crosshair rounded-md border border-white/[0.05] bg-[#101010]/80 shadow-inner"
+                 className="flex-1 relative cursor-crosshair rounded-lg border border-white/5 bg-background/40 shadow-inner"
                  onPointerDown={handleTextTrackPointerDown}
                  onPointerMove={handleTextTrackPointerMove}
                  onPointerUp={finishTextTrackSelection}
@@ -1158,7 +1158,7 @@ export const Timeline = ({
                            clipDuration={clipDuration}
                            clipWidth={width}
                          />
-                         <div className="absolute inset-0 bg-gradient-to-b from-[#183b5c]/35 via-[#183b5c]/15 to-[#102d45]/80 pointer-events-none" />
+                         <div className="absolute inset-0 bg-gradient-to-b from-blue-500/10 via-blue-500/5 to-transparent pointer-events-none" />
                          <div className="relative z-10 min-w-0 max-w-full px-2.5 py-1.5 text-left pointer-events-none">
                            <div className="text-[10px] font-semibold text-white truncate drop-shadow">{clipVideo.name}</div>
                            <div className="text-[9px] text-blue-100/70">
@@ -1184,7 +1184,7 @@ export const Timeline = ({
                <div className={`${TRACK_LABEL_CLASS} items-center`} style={TRACK_LABEL_STYLE}>
                   <span className="text-[10px] font-medium text-gray-400">Voice/BGM</span>
                </div>
-               <div className="flex-1 relative rounded-md border border-white/[0.05] bg-[#101010]/70 shadow-inner">
+               <div className="flex-1 relative rounded-lg border border-white/5 bg-background/30 shadow-inner">
                  {dubbingClips.length > 0 && timelineScaleDuration > 0 ? (
                    dubbingClips.map((clip) => {
                      const left = (clip.start / timelineScaleDuration) * scrubWidth;

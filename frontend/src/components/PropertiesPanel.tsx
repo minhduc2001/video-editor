@@ -120,9 +120,9 @@ export const PropertiesPanel = ({
   };
 
   return (
-    <div className="w-full min-w-0 h-full bg-[#1e1e1e] flex flex-col z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.2)]">
+    <div className="w-full min-w-0 h-full glass-card flex flex-col z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.2)] border-l border-border/50">
       {/* Top Tabs */}
-      <div className="flex h-10 bg-[#1e1e1e] border-b border-[#000] items-center px-4 space-x-6 text-[13px] font-medium pt-2">
+      <div className="flex h-12 bg-muted/20 border-b border-border/40 items-center px-4 space-x-6 text-[13px] font-medium backdrop-blur-md">
         <button 
           onClick={() => setActiveTab('video')}
           className={`pb-2 ${activeTab === 'video' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
@@ -145,7 +145,7 @@ export const PropertiesPanel = ({
         
         {activeTab === 'video' && (
            <div className="space-y-6">
-              <div className="rounded-md border border-[#2d2d2d] bg-[#121212] p-3 space-y-2">
+              <div className="rounded-xl border border-border/50 bg-background/40 p-4 space-y-2 shadow-sm backdrop-blur-sm">
                 <div className="text-[11px] uppercase font-semibold text-gray-500">Selected Media</div>
                 {video ? (
                   <div className="space-y-1 text-xs">
@@ -185,7 +185,7 @@ export const PropertiesPanel = ({
            <div className="space-y-6">
               {selectedDubbingClip ? (
                 <div className="space-y-5">
-                  <div className="rounded-md border border-[#2d2d2d] bg-[#121212] p-3 space-y-1">
+                  <div className="rounded-xl border border-border/50 bg-background/40 p-4 space-y-1 shadow-sm backdrop-blur-sm">
                     <div className="text-[11px] uppercase font-semibold text-gray-500">Selected Audio Clip</div>
                     <div className="truncate text-xs text-gray-200" title={selectedDubbingClip.text}>
                       {selectedDubbingClip.text}
@@ -284,7 +284,7 @@ export const PropertiesPanel = ({
                   </button>
                 </div>
               ) : (
-                <div className="rounded-md border border-[#2d2d2d] bg-[#121212] p-3 text-[11px] text-gray-500">
+                <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-[11px] text-muted-foreground shadow-sm">
                   Chọn một audio clip trong Voice/BGM track để chỉnh volume, speed hoặc kéo timing.
                 </div>
               )}
@@ -324,7 +324,7 @@ export const PropertiesPanel = ({
                   </div>
                 </>
               ) : (
-                <div className="rounded-md border border-[#2d2d2d] bg-[#121212] p-3 text-[11px] text-gray-500">
+                <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-[11px] text-muted-foreground shadow-sm">
                   Chọn audio clip ở Voice/BGM track để chỉnh speed.
                 </div>
               )}
@@ -345,7 +345,7 @@ export const PropertiesPanel = ({
                 {/* Text Input */}
                 <div className="space-y-2">
                   <textarea 
-                    className="w-full bg-[#121212] border border-[#2d2d2d] rounded p-2 text-gray-200 resize-none outline-none focus:border-blue-500 text-sm"
+                    className="w-full bg-background/50 border border-input rounded-lg p-2.5 text-foreground resize-none outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-sm shadow-sm"
                     rows={3}
                     value={isMultiTextSelection ? '' : primaryTextClip?.text ?? ''}
                     disabled={!primaryTextClip || isMultiTextSelection}
@@ -405,7 +405,7 @@ export const PropertiesPanel = ({
                 {/* Font Selection */}
                 <div className="flex items-center space-x-2">
                   <select
-                    className="flex-1 bg-[#121212] border border-[#2d2d2d] rounded p-1.5 text-gray-300 outline-none focus:border-blue-500 text-xs"
+                    className="flex-1 bg-background/50 border border-input rounded-md p-1.5 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-xs"
                     value={primaryTextClip?.fontFamily ?? DEFAULT_TEXT_FONT}
                     disabled={!hasTextSelection}
                     onChange={(event) => {

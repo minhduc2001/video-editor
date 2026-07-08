@@ -328,9 +328,9 @@ export const Player = ({
   }, []);
 
   return (
-    <div className="min-w-0 flex-1 bg-[#121212] flex flex-col h-full border-r border-[#000]">
+    <div className="min-w-0 flex-1 glass-card border-r border-border/50 flex flex-col h-full shadow-lg relative z-0">
       {/* Top Toolbar */}
-      <div className="h-10 flex items-center px-4 justify-between border-b border-[#000]">
+      <div className="h-12 flex items-center px-4 justify-between border-b border-border/40 bg-muted/20 backdrop-blur-md">
          <span className="text-xs text-gray-400">Player</span>
           <div className="flex gap-2">
             <button
@@ -338,8 +338,8 @@ export const Player = ({
               onClick={onToggleReduceOriginalAudioAll}
               className={`rounded p-1.5 transition-colors ${
                 reduceOriginalAudioAll
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:bg-[#2d2d2d] hover:text-white'
+                  ? 'text-primary bg-primary/10 shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
               }`}
               title="Reduce original audio for whole timeline"
               aria-pressed={reduceOriginalAudioAll}
@@ -354,7 +354,7 @@ export const Player = ({
       <div className="flex-1 relative flex items-center justify-center overflow-hidden p-4">
         <div
           ref={canvasRef}
-          className="max-h-full max-w-full bg-black relative border border-[#2d2d2d] shadow-2xl"
+          className="max-h-full max-w-full bg-black relative border border-white/10 rounded-lg overflow-hidden shadow-2xl transition-all"
           style={{
             aspectRatio: `${videoAspectRatio}`,
             width: videoAspectRatio >= 1 ? '100%' : 'auto',
@@ -418,7 +418,7 @@ export const Player = ({
               }}
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-[#080808] text-gray-500">
+            <div className="w-full h-full flex flex-col items-center justify-center bg-background/50 text-muted-foreground backdrop-blur-sm rounded-lg">
               <Film size={34} className="mb-3" />
               <div className="text-sm text-gray-300">Chưa có video trên timeline</div>
               <div className="text-xs text-gray-500 mt-1">Import video rồi kéo từ Media xuống Main Track</div>
@@ -575,7 +575,7 @@ export const Player = ({
       </div>
 
       {/* Player Controls */}
-      <div className="h-12 flex items-center px-4 justify-between text-gray-400 border-t border-[#000] bg-[#181818]">
+      <div className="h-14 flex items-center px-4 justify-between text-muted-foreground border-t border-border/50 bg-muted/20 backdrop-blur-md">
         <div className="flex items-center gap-4 w-32 text-[11px] font-mono">
            <span className="text-blue-400">{formatDuration(timelineCurrentTime)}</span>
            <span className="text-gray-600">/</span>

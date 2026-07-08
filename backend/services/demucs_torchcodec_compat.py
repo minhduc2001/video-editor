@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Run Demucs with a WAV writer that does not require TorchCodec.
 
 Recent torchaudio releases route ``torchaudio.save`` through TorchCodec. On
